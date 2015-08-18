@@ -7,6 +7,9 @@
 #include <unistd.h>
 #include <sys/sendfile.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include "server.hpp"
 
 int
@@ -136,6 +139,15 @@ to_xdigits (ssize_t const n)
     return t;
 }
 
+static inline void
+setsockopt_cork (int const sock, bool const flag)
+{
+    int const e = errno;
+    int state = flag ? 1 : 0;
+    setsockopt (sock, IPPROTO_TCP, TCP_CORK, &state, sizeof (state));
+    errno = e;
+}
+
 ssize_t
 event_handler_type::iotransfer (tcpserver_type& loop)
 {
@@ -222,6 +234,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
         }
         else if (KRESPONSE_CHUNK_HEADER == kont) {
             int sock = loop.mplex.fd (handle_id);
+            setsockopt_cork (sock, true);
             ioresult = write (sock, &wrbuf[wrpos1], wrbuf.size () - wrpos1);
             if (ioresult <= 0)
                 break;
@@ -272,7 +285,8 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 iowait = WRITE_EVENT;
                 return ioresult;
             }
-            else if (response.chunk_size > 0) {
+            setsockopt_cork (sock, false);
+            if (response.chunk_size > 0) {
                 response.chunk_size = std::min (
                     response.content_length - wrpos, BUFFER_SIZE - 16);
                 wrbuf = to_xdigits (response.chunk_size) + "\r\n";
