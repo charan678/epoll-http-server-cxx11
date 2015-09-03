@@ -47,7 +47,7 @@ event_handler_type::on_read (tcpserver_type& loop)
     if (n > 0) {
         std::time_t uptime = std::time (nullptr) + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
-        if (iowait & WRITE_EVENT) {
+        if (iowait_mask & WRITE_EVENT) {
             if (loop.mplex.mod (WRITE_EVENT|EDGE_EVENT, handle_id) < 0)
                 return loop.remove_handler (id);
         }
@@ -72,7 +72,7 @@ event_handler_type::on_write (tcpserver_type& loop)
     if (n > 0) {
         std::time_t uptime = std::time (nullptr) + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
-        if (iowait & READ_EVENT) {
+        if (iowait_mask & READ_EVENT) {
             if (loop.mplex.mod (READ_EVENT|EDGE_EVENT, handle_id) < 0)
                 return loop.remove_handler (id);
         }
@@ -115,8 +115,7 @@ event_handler_type::clear ()
     reqdecoder.clear ();
     chunkdecoder.clear ();
     ioresult = 0;
-    iowait = READ_EVENT;
-    kont = KREQUEST_HEADER_READ;
+    iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
 }
 
 static void
@@ -149,6 +148,14 @@ setsockopt_cork (int const sock, bool const flag)
 }
 
 ssize_t
+event_handler_type::iocontinue (uint32_t const mask, int const kontinuation)
+{
+    iowait_mask = mask;
+    kont = kontinuation;
+    return ioresult;
+}
+
+ssize_t
 event_handler_type::iotransfer (tcpserver_type& loop)
 {
     for (;;) {
@@ -170,9 +177,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 if (! reqdecoder.put (rdbuf[rdpos++], request))
                     break;
             if (reqdecoder.partial ()) {
-                kont = KREQUEST_HEADER_READ;
-                iowait = READ_EVENT;
-                return ioresult;
+                return iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
             }
             prepare_request_body ();
         }
@@ -181,9 +186,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 if (! chunkdecoder.put (rdbuf[rdpos++], request.body))
                     break;
             if (chunkdecoder.partial ()) {
-                kont = KREQUEST_CHUNKED_READ;
-                iowait = READ_EVENT;
-                return ioresult;
+                return iocontinue (READ_EVENT, KREQUEST_CHUNKED_READ);
             }
             finalize_request_chunked ();
         }
@@ -192,9 +195,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             request.body.append (rdbuf, rdpos, n);
             rdpos += n;
             if (request.body.size () < request.content_length) {
-                kont = KREQUEST_LENGTH_READ;
-                iowait = READ_EVENT;
-                return ioresult;
+                return iocontinue (READ_EVENT, KREQUEST_LENGTH_READ);
             }
             kont = KDISPATCH;
         }
@@ -211,9 +212,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
         }
         else if (KRESPONSE == kont) {
             prepare_response ();
-            kont = KRESPONSE_HEADER;
-            iowait = WRITE_EVENT;
-            return ioresult;
+            return iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
         }
         else if (KRESPONSE_HEADER == kont) {
             int sock = loop.mplex.fd (handle_id);
@@ -222,13 +221,10 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 break;
             wrpos += ioresult;
             if (wrpos < wrsize) {
-                kont = KRESPONSE_HEADER;
-                iowait = WRITE_EVENT;
-                return ioresult;
+                return iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
             }
             if (prepare_response_body ()) {
-                iowait = WRITE_EVENT;
-                return ioresult;
+                return iocontinue (WRITE_EVENT, kont);
             }
             kont = KRESPONSE_END;
         }
@@ -240,19 +236,17 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 break;
             wrpos1 += ioresult;
             if (wrpos1 < wrbuf.size ()) {
-                kont = KRESPONSE_CHUNK_HEADER;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
             }
             else if (response.chunk_size > 0) {
                 wrsize = wrpos + response.chunk_size;
-                kont = KRESPONSE_CHUNK_BODY;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
             }
             else {
                 wrbuf = "\r\n";
                 wrpos1 = 0;
-                kont = KRESPONSE_CHUNK_CRLF;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
             }
-            iowait = WRITE_EVENT;
-            return ioresult;
         }
         else if (KRESPONSE_CHUNK_BODY == kont) {
             int sock = loop.mplex.fd (handle_id);
@@ -264,15 +258,14 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             if (ioresult <= 0)
                 break;
             wrpos += ioresult;
-            if (wrpos < wrsize)
-                kont = KRESPONSE_CHUNK_BODY;
+            if (wrpos < wrsize) {
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
+            }
             else {
                 wrbuf = "\r\n";
                 wrpos1 = 0;
-                kont = KRESPONSE_CHUNK_CRLF;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
             }
-            iowait = WRITE_EVENT;
-            return ioresult;
         }
         else if (KRESPONSE_CHUNK_CRLF == kont) {
             int sock = loop.mplex.fd (handle_id);
@@ -281,9 +274,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 break;
             wrpos1 += ioresult;
             if (wrpos1 < wrbuf.size ()) {
-                kont = KRESPONSE_CHUNK_CRLF;
-                iowait = WRITE_EVENT;
-                return ioresult;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
             }
             setsockopt_cork (sock, false);
             if (response.chunk_size > 0) {
@@ -291,9 +282,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                     response.content_length - wrpos, BUFFER_SIZE - 16);
                 wrbuf = to_xdigits (response.chunk_size) + "\r\n";
                 wrpos1 = 0;
-                kont = KRESPONSE_CHUNK_HEADER;
-                iowait = WRITE_EVENT;
-                return ioresult;
+                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
             }
             kont = KRESPONSE_END;
         }
@@ -304,9 +293,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 break;
             if (ioresult > 0) {
                 wrpos += ioresult;
-                kont = KRESPONSE_FILE_LENGTH;
-                iowait = WRITE_EVENT;
-                return ioresult;                
+                return iocontinue (WRITE_EVENT, KRESPONSE_FILE_LENGTH);
             }
             kont = KRESPONSE_END;
         }
@@ -317,9 +304,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 break;
             wrpos += ioresult;
             if (wrpos < wrsize) {
-                kont = KRESPONSE_BODY_LENGTH;
-                iowait = WRITE_EVENT;
-                return ioresult;
+                return iocontinue (WRITE_EVENT, KRESPONSE_BODY_LENGTH);
             }
             kont = KRESPONSE_END;
         }
@@ -327,9 +312,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             if (finalize_response ()) {
                 int sock = loop.mplex.fd (handle_id);
                 shutdown (sock, SHUT_WR);
-                kont = KTEARDOWN;
-                iowait = READ_EVENT;
-                return ioresult;
+                return iocontinue (READ_EVENT, KTEARDOWN);
             }
             kont = KREQUEST_HEADER;
         }
@@ -339,9 +322,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             if (ioresult <= 0)
                 break;
             if (ioresult > 0) {
-                kont = KTEARDOWN;
-                iowait = READ_EVENT;
-                return ioresult;
+                return iocontinue (READ_EVENT, KTEARDOWN);
             }
         }
     }
@@ -441,7 +422,7 @@ event_handler_type::decide_transfer_encoding ()
     if (response.header.count ("transfer-encoding") > 0) {
         std::vector<std::string> te;
         request.header_token (response.header["transfer-encoding"], te);
-        if (te.size () != 1 || te.back () != "chunked") 
+        if (te.size () != 1 || te.back () != "chunked")
             response.header.erase ("transfer-encoding");
     }
     if (response.header.count ("content-length") > 0) {

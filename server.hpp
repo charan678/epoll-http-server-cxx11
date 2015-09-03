@@ -286,7 +286,7 @@ public:
     request_type request;
     request_decoder_type reqdecoder;
     chunk_decoder_type chunkdecoder;
-    uint32_t iowait;
+    uint32_t iowait_mask;
     ssize_t ioresult;
     int keepalive_requests;
 
@@ -297,6 +297,7 @@ public:
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
           response (), request (), reqdecoder (), chunkdecoder () {}
     ssize_t iotransfer (tcpserver_type& loop);
+    ssize_t iocontinue (uint32_t const mask, int const kontinuation);
     int on_accept (tcpserver_type& loop);
     int on_read (tcpserver_type& loop);
     int on_write (tcpserver_type& loop);
