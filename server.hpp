@@ -203,6 +203,7 @@ public:
     virtual int mod_timer (std::time_t const uptime, std::size_t const id);
     virtual int stop_timer (std::size_t const id);
     virtual int wait (int msec) = 0;
+    virtual void run_timer ();
     bool empty () { return handles.empty (READY); }
     int begin () { return handles[READY].next; }
     int fd (std::size_t const id) { return handles[id].fd; }
@@ -215,8 +216,6 @@ protected:
     int max_events;
     ring_in_vector<handle_type> handles;
     std::multimap<std::time_t, int> timers;
-
-    virtual void run_timer ();
 
     inline int range_check (std::size_t const id)
     {

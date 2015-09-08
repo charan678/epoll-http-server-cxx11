@@ -142,7 +142,6 @@ epoll_mplex_type::del (std::size_t const id)
 int
 epoll_mplex_type::wait (int msec)
 {
-    run_timer ();
     if (! handles.empty (READY))
         msec = 0;
     int const nevent = epoll_wait (epoll_fd, evset, max_events, msec);

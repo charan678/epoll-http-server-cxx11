@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -11,23 +12,42 @@
 #include "server.hpp"
 
 namespace {
-    volatile std::sig_atomic_t g_signal_status;
+    volatile std::sig_atomic_t g_signal_alrm = 0;
+    volatile std::sig_atomic_t g_signal_status = 0;
 }
 
 static void
 signal_handler (int signal)
 {
-    g_signal_status = signal;
+    if (SIGALRM == signal)
+        g_signal_alrm = signal;
+    else
+        g_signal_status = signal;
 }
 
 static void
-signal_norestart (int sig, void (*handler)(int))
+set_signal_handler (int const sig, void (*handler)(int), int const flags)
 {
     struct sigaction sa;
     sa.sa_handler = handler;
-    sa.sa_flags = 0;
+    sa.sa_flags = flags;
     sigemptyset (&sa.sa_mask);
     sigaction (sig, &sa, nullptr);
+}
+
+static void
+start_interval_timer (long const sec, long const usec)
+{
+    logger_type& log = logger_type::getinstance ();
+    struct itimerval timer;
+    timer.it_interval.tv_sec = sec;
+    timer.it_interval.tv_usec = usec;
+    timer.it_value.tv_sec = sec;
+    timer.it_value.tv_usec = usec;
+    if (setitimer (ITIMER_REAL, &timer, nullptr) < 0) {
+        log.put_error ("setitimer");
+        exit (EXIT_FAILURE);
+    }
 }
 
 int
@@ -35,7 +55,9 @@ main (int argc, char *argv[])
 {
     std::setlocale (LC_ALL, "C");
     std::signal (SIGPIPE, SIG_IGN);
-    signal_norestart (SIGINT, signal_handler);
+    set_signal_handler (SIGINT, signal_handler, 0);
+    set_signal_handler (SIGALRM, signal_handler, 0);
+    start_interval_timer (1L, 0);
     epoll_mplex_type mplex (LISTENER_COUNT + MAX_CONNECTIONS);
     tcpserver_type server (MAX_CONNECTIONS, TIMEOUT, mplex);
     server.run (SERVER_PORT, BACKLOG);
@@ -79,7 +101,11 @@ tcpserver_type::run (int const port, int const backlog)
     handlers.erase (WAIT);
     int kont = initialize (port, backlog);
     while (RUN == kont) {
-        if (mplex.wait (1000) < 0) {
+        if (g_signal_alrm) {
+            mplex.run_timer ();
+            g_signal_alrm = 0;
+        }
+        else if (mplex.wait (1000) < 0) {
             log.put_error ("mplex.wait");
             break;
         }
