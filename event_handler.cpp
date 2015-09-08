@@ -159,18 +159,14 @@ ssize_t
 event_handler_type::iotransfer (tcpserver_type& loop)
 {
     for (;;) {
-        if (KREQUEST_HEADER_READ == kont
-                || KREQUEST_CHUNKED_READ == kont
-                || KREQUEST_LENGTH_READ == kont) {
+        if (KREQUEST_LENGTH_READ >= kont) {
             int sock = loop.mplex.fd (handle_id);
             ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
             if (ioresult <= 0)
                 break;
             rdpos = 0;
             rdsize = ioresult;
-            kont = KREQUEST_HEADER_READ == kont ? KREQUEST_HEADER
-                 : KREQUEST_CHUNKED_READ == kont ? KREQUEST_CHUNKED
-                 : KREQUEST_LENGTH;
+            kont += KREQUEST_HEADER - KREQUEST_HEADER_READ;
         }
         else if (KREQUEST_HEADER == kont) {
             while (rdpos < rdsize)

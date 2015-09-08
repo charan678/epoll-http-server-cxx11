@@ -252,10 +252,10 @@ class event_handler_type {
 public:
     enum {
         KREQUEST_HEADER_READ,
-        KREQUEST_HEADER,
         KREQUEST_CHUNKED_READ,
-        KREQUEST_CHUNKED,
         KREQUEST_LENGTH_READ,
+        KREQUEST_HEADER,
+        KREQUEST_CHUNKED,
         KREQUEST_LENGTH,
         KDISPATCH,
         KRESPONSE,
