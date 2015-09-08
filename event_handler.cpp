@@ -394,7 +394,6 @@ event_handler_type::prepare_response ()
         if (response.header.count ("content-length") > 0)
             response.header.erase ("content-length");
     }
-    //guess_close ();
     wrbuf = response.to_string ();
     wrpos = 0;
     wrsize = wrbuf.size ();
@@ -436,21 +435,6 @@ find_item (std::vector<std::string> const& a, char const* s)
 {
     return std::find (a.begin (), a.end (), s) != a.end ();
 }
-
-#if 0
-void
-event_handler_type::guess_close ()
-{
-    std::vector<std::string> rqconn;
-    if (request.header.count ("connection") > 0)
-        request.header_token (request.header["connection"], rqconn);
-    if (find_item (rqconn, "close"))
-        response.header["connection"] = "close";
-    else if (request.http_version < "HTTP/1.1"
-            && ! find_item (rqconn, "keep-alive"))
-        response.header["connection"] = "close";
-}
-#endif
 
 bool
 event_handler_type::prepare_response_body ()
