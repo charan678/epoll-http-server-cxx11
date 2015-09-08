@@ -273,28 +273,16 @@ public:
     ssize_t handle_id;
     int state;
     std::string remote_addr;
-    int kont;
-    std::string rdbuf;
-    std::string wrbuf;
-    ssize_t rdpos;
-    ssize_t rdsize;
-    ssize_t wrpos;
-    ssize_t wrpos1;
-    ssize_t wrsize;
     response_type response;
     request_type request;
-    request_decoder_type reqdecoder;
-    chunk_decoder_type chunkdecoder;
-    uint32_t iowait_mask;
-    ssize_t ioresult;
-    int keepalive_requests;
 
     event_handler_type (std::size_t a, std::size_t b, std::size_t c)
         : id (a), prev (b), next (c),
           handle_id (-1), state (FREE), remote_addr (),
+          response (), request (),
           kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
-          response (), request (), reqdecoder (), chunkdecoder () {}
+          reqdecoder (), chunkdecoder () {}
     ssize_t iotransfer (tcpserver_type& loop);
     int on_accept (tcpserver_type& loop);
     int on_read (tcpserver_type& loop);
@@ -304,6 +292,20 @@ public:
     void clear ();
 
 private:
+    int kont;
+    std::string rdbuf;
+    std::string wrbuf;
+    ssize_t rdpos;
+    ssize_t rdsize;
+    ssize_t wrpos;
+    ssize_t wrpos1;
+    ssize_t wrsize;
+    request_decoder_type reqdecoder;
+    chunk_decoder_type chunkdecoder;
+    uint32_t iowait_mask;
+    ssize_t ioresult;
+    int keepalive_requests;
+
     ssize_t iocontinue (uint32_t const mask, int const kontinuation);
     void prepare_request_body ();
     void prepare_request_chunked ();
