@@ -430,7 +430,7 @@ event_handler_type::decide_transfer_encoding ()
         response.header["connection"] = "close";
 }
 
-bool
+static inline bool
 find_item (std::vector<std::string> const& a, char const* s)
 {
     return std::find (a.begin (), a.end (), s) != a.end ();
