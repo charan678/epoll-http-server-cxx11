@@ -295,6 +295,7 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 wrpos += ioresult;
                 return iocontinue (WRITE_EVENT, KRESPONSE_FILE_LENGTH);
             }
+            ioresult = BUFFER_SIZE;
             kont = KRESPONSE_END;
         }
         else if (KRESPONSE_BODY_LENGTH == kont) {
