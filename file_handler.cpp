@@ -44,7 +44,7 @@ file_handler_type::get (event_handler_type& r)
     if (412 == code)
         return precondition_failed (r);
     r.response.content_length = st.st_size;
-    r.response.header["content_length"] = std::to_string (st.st_size);
+    r.response.header["content-length"] = std::to_string (st.st_size);
     r.response.header["content-type"] = mime_type (loc.ext);
     r.response.header["etag"] = etag;
     r.response.header["last-modified"] = to_string_time (httpdate, st.st_mtime);
