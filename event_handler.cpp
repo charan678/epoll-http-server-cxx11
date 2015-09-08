@@ -158,9 +158,9 @@ event_handler_type::iocontinue (uint32_t const mask, int const kontinuation)
 ssize_t
 event_handler_type::iotransfer (tcpserver_type& loop)
 {
+    int sock = loop.mplex.fd (handle_id);
     for (;;) {
         if (KREQUEST_LENGTH_READ >= kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
             if (ioresult <= 0)
                 break;
@@ -211,7 +211,6 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             return iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
         }
         else if (KRESPONSE_HEADER == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = write (sock, &wrbuf[wrpos], wrsize - wrpos);
             if (ioresult <= 0)
                 break;
@@ -225,7 +224,6 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             kont = KRESPONSE_END;
         }
         else if (KRESPONSE_CHUNK_HEADER == kont) {
-            int sock = loop.mplex.fd (handle_id);
             setsockopt_cork (sock, true);
             ioresult = write (sock, &wrbuf[wrpos1], wrbuf.size () - wrpos1);
             if (ioresult <= 0)
@@ -238,14 +236,11 @@ event_handler_type::iotransfer (tcpserver_type& loop)
                 wrsize = wrpos + response.chunk_size;
                 return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
             }
-            else {
-                wrbuf = "\r\n";
-                wrpos1 = 0;
-                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
-            }
+            wrbuf = "\r\n";
+            wrpos1 = 0;
+            return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
         }
         else if (KRESPONSE_CHUNK_BODY == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ssize_t n = wrsize - wrpos;
             if (response.body_fd < 0)
                 ioresult = write (sock, &response.body[wrpos], n);
@@ -257,14 +252,11 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             if (wrpos < wrsize) {
                 return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
             }
-            else {
-                wrbuf = "\r\n";
-                wrpos1 = 0;
-                return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
-            }
+            wrbuf = "\r\n";
+            wrpos1 = 0;
+            return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
         }
         else if (KRESPONSE_CHUNK_CRLF == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = write (sock, &wrbuf[wrpos1], wrbuf.size () - wrpos1);
             if (ioresult <= 0)
                 break;
@@ -283,7 +275,6 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             kont = KRESPONSE_END;
         }
         else if (KRESPONSE_FILE_LENGTH == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = sendfile (sock, response.body_fd, nullptr, BUFFER_SIZE);
             if (ioresult < 0)
                 break;
@@ -295,7 +286,6 @@ event_handler_type::iotransfer (tcpserver_type& loop)
             kont = KRESPONSE_END;
         }
         else if (KRESPONSE_BODY_LENGTH == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = write (sock, &response.body[wrpos], wrsize - wrpos);
             if (ioresult <= 0)
                 break;
@@ -307,20 +297,17 @@ event_handler_type::iotransfer (tcpserver_type& loop)
         }
         else if (KRESPONSE_END == kont) {
             if (finalize_response ()) {
-                int sock = loop.mplex.fd (handle_id);
                 shutdown (sock, SHUT_WR);
                 return iocontinue (READ_EVENT, KTEARDOWN);
             }
             kont = KREQUEST_HEADER;
         }
         else if (KTEARDOWN == kont) {
-            int sock = loop.mplex.fd (handle_id);
             ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
-            if (ioresult <= 0)
-                break;
             if (ioresult > 0) {
                 return iocontinue (READ_EVENT, KTEARDOWN);
             }
+            break;
         }
     }
     return ioresult;
@@ -407,7 +394,7 @@ event_handler_type::prepare_response ()
         if (response.header.count ("content-length") > 0)
             response.header.erase ("content-length");
     }
-    guess_close ();
+    //guess_close ();
     wrbuf = response.to_string ();
     wrpos = 0;
     wrsize = wrbuf.size ();
@@ -444,18 +431,26 @@ event_handler_type::decide_transfer_encoding ()
         response.header["connection"] = "close";
 }
 
+bool
+find_item (std::vector<std::string> const& a, char const* s)
+{
+    return std::find (a.begin (), a.end (), s) != a.end ();
+}
+
+#if 0
 void
 event_handler_type::guess_close ()
 {
     std::vector<std::string> rqconn;
     if (request.header.count ("connection") > 0)
         request.header_token (request.header["connection"], rqconn);
-    if (std::find (rqconn.begin (), rqconn.end (), "close") != rqconn.end ())
+    if (find_item (rqconn, "close"))
         response.header["connection"] = "close";
     else if (request.http_version < "HTTP/1.1"
-            && std::find (rqconn.begin (), rqconn.end (), "keep-alive") != rqconn.end ())
+            && ! find_item (rqconn, "keep-alive"))
         response.header["connection"] = "close";
 }
+#endif
 
 bool
 event_handler_type::prepare_response_body ()
@@ -502,14 +497,17 @@ event_handler_type::finalize_response ()
 bool
 event_handler_type::done_connection ()
 {
+    std::vector<std::string> rqconn;
     std::vector<std::string> rsconn;
     if (MAX_KEEPALIVE_REQUESTS <= ++keepalive_requests)
         return true;
+    if (request.header.count ("connection") > 0)
+        request.header_token (request.header["connection"], rqconn);
     if (response.header.count ("connection") > 0)
         request.header_token (response.header["connection"], rsconn);
-    if (std::find (rsconn.begin (), rsconn.end (), "close") != rsconn.end ())
+    if (find_item (rqconn, "close") || find_item (rsconn, "close"))
         return true;
     if (response.http_version < "HTTP/1.1")
-        return std::find (rsconn.begin (), rsconn.end (), "keep-alive") == rsconn.end ();
+        return ! find_item (rqconn, "keep-alive");
     return false;
 }

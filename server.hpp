@@ -296,7 +296,6 @@ public:
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
           response (), request (), reqdecoder (), chunkdecoder () {}
     ssize_t iotransfer (tcpserver_type& loop);
-    ssize_t iocontinue (uint32_t const mask, int const kontinuation);
     int on_accept (tcpserver_type& loop);
     int on_read (tcpserver_type& loop);
     int on_write (tcpserver_type& loop);
@@ -304,13 +303,14 @@ public:
     void on_close (tcpserver_type& loop);
     void clear ();
 
+private:
+    ssize_t iocontinue (uint32_t const mask, int const kontinuation);
     void prepare_request_body ();
     void prepare_request_chunked ();
     void finalize_request_chunked ();
     void prepare_request_length ();
     void prepare_response ();
     void decide_transfer_encoding ();
-    void guess_close ();
     bool prepare_response_body ();
     bool finalize_response ();
     bool done_connection ();
