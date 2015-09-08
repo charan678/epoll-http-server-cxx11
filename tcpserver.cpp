@@ -56,7 +56,7 @@ main (int argc, char *argv[])
     std::setlocale (LC_ALL, "C");
     std::signal (SIGPIPE, SIG_IGN);
     set_signal_handler (SIGINT, signal_handler, 0);
-    set_signal_handler (SIGALRM, signal_handler, 0);
+    set_signal_handler (SIGALRM, signal_handler, SA_RESTART);
     start_interval_timer (1L, 0);
     epoll_mplex_type mplex (LISTENER_COUNT + MAX_CONNECTIONS);
     tcpserver_type server (MAX_CONNECTIONS, TIMEOUT, mplex);
