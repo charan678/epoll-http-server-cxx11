@@ -26,7 +26,7 @@ event_handler_type::on_accept (tcpserver_type& loop)
         ;
     else {
         remote_addr = addr;
-        std::time_t uptime = std::time (nullptr) + loop.timeout ();
+        std::time_t uptime = loop.looptime () + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
         clear ();
         return loop.register_handler (id);
@@ -45,7 +45,7 @@ event_handler_type::on_read (tcpserver_type& loop)
     logger_type& log = logger_type::getinstance ();
     ssize_t n = iotransfer (loop);
     if (n > 0) {
-        std::time_t uptime = std::time (nullptr) + loop.timeout ();
+        std::time_t uptime = loop.looptime () + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
         if (iowait_mask & WRITE_EVENT) {
             if (loop.mplex.mod (WRITE_EVENT|EDGE_EVENT, handle_id) < 0)
@@ -70,7 +70,7 @@ event_handler_type::on_write (tcpserver_type& loop)
     logger_type& log = logger_type::getinstance ();
     ssize_t n = iotransfer (loop);
     if (n > 0) {
-        std::time_t uptime = std::time (nullptr) + loop.timeout ();
+        std::time_t uptime = loop.looptime () + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
         if (iowait_mask & READ_EVENT) {
             if (loop.mplex.mod (READ_EVENT|EDGE_EVENT, handle_id) < 0)

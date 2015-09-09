@@ -5,6 +5,7 @@
 io_mplex_type::io_mplex_type (std::size_t n)
     : max_events (n), handles (), timers ()
 {
+    looptime_ = std::time (nullptr);
     handles.resize (n + 3);
     handles.erase (WAIT);
     handles.erase (READY);
@@ -17,15 +18,14 @@ io_mplex_type::add_timer (std::time_t const uptime, std::size_t const handler_id
         errno = ENOMEM;
         return -1;
     }
-    std::time_t looptime = std::time (nullptr);
     std::size_t const id = handles[FREE].next;
     handles[id].ev_permit = false;
     handles[id].fd = -1;
     handles[id].uptime = uptime;
     handles[id].handler_id = handler_id;
-    handles[id].state = looptime < uptime ? WAIT : READY;
+    handles[id].state = looptime_ < uptime ? WAIT : READY;
     handles[id].ev_mask = TIMER_EVENT;
-    handles[id].events = looptime < uptime ? 0 : TIMER_EVENT;
+    handles[id].events = looptime_ < uptime ? 0 : TIMER_EVENT;
     handles.erase (id);
     handles.insert (handles[id].state, id);
     if (WAIT == handles[id].state)
@@ -40,12 +40,11 @@ io_mplex_type::mod_timer (std::time_t const uptime, std::size_t const id)
         return -1;
     std::size_t const next_id = handles[id].next;
     stop_timer (id);
-    std::time_t looptime = std::time (nullptr);
     int prev_state = handles[id].state;
     handles[id].uptime = uptime;
-    handles[id].state = looptime < uptime ? handles[id].state : READY;
+    handles[id].state = looptime_ < uptime ? handles[id].state : READY;
     handles[id].ev_mask |= TIMER_EVENT;
-    handles[id].events |= looptime < uptime ? 0 : TIMER_EVENT;
+    handles[id].events |= looptime_ < uptime ? 0 : TIMER_EVENT;
     if (prev_state != handles[id].state) {
         handles.erase (id);
         handles.insert (handles[id].state, id);
@@ -81,8 +80,8 @@ io_mplex_type::stop_timer (std::size_t const id)
 void
 io_mplex_type::run_timer ()
 {
-    std::time_t looptime = std::time (nullptr);
-    for (auto i = timers.begin (); i != timers.end () && i->first <= looptime;) {
+    looptime_ = std::time (nullptr);
+    for (auto i = timers.begin (); i != timers.end () && i->first <= looptime_;) {
         handles[i->second].events |= TIMER_EVENT;
         if (WAIT == handles[i->second].state) {
             handles.erase (i->second);

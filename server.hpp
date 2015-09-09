@@ -211,9 +211,11 @@ public:
     int events (std::size_t const id) { return handles[id].events & handles[id].ev_mask; }
     int next (std::size_t const id) { return handles[id].next; }
     int end () { return READY; }
+    std::time_t looptime () const { return looptime_; }
 
 protected:
     int max_events;
+    std::time_t looptime_;
     ring_in_vector<handle_type> handles;
     std::multimap<std::time_t, int> timers;
 
@@ -394,6 +396,7 @@ public:
     int register_handler (std::size_t const handler_id);
     int remove_handler (std::size_t const handler_id);
     int timeout () const { return timeout_; }
+    std::time_t looptime () const { return mplex.looptime (); }
     int listen_socket_create (int const port, int const backlog);
     int accept_client (std::string& remote_addr);
     int fd_set_nonblock (int fd);
