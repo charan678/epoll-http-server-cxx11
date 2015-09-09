@@ -316,7 +316,9 @@ event_handler_type::iotransfer (tcpserver_type& loop)
 void
 event_handler_type::prepare_request_body ()
 {
-    if (reqdecoder.bad ()) {
+    if (reqdecoder.bad ()
+            || (request.http_version >= "HTTP/1.1"
+                && request.header.count ("host") == 0)) {
         message_handler_type h;
         h.bad_request (*this);
         kont = KRESPONSE;
