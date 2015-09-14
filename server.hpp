@@ -84,33 +84,47 @@ private:
     std::vector<NODE_T> node;
 };
 
-class response_type {
+struct token_type {
+    std::string token;
+    std::vector<std::string> parameter;
+    bool equal_token (std::string const& x) const { return token == x; }
+    void clear () { token.clear (); parameter.clear (); }
+};
+
+struct token_list_type {
+    std::vector<token_type> list;
+    std::size_t find (std::string const& x) const;
+    std::size_t size () const { return list.size (); }
+    bool decode_simple (std::string const& str, int const min = 1);
+    bool decode (std::string const& str, int const min = 1);
+};
+
+class message_type {
 public:
     std::string http_version;
-    int code;
-    ssize_t content_length;
     std::map<std::string, std::string> header;
+    ssize_t content_length;
+    std::string body;
+    ssize_t canonical_length ();
+};
+
+class response_type : public message_type {
+public:
+    int code;
     bool has_body;
     bool chunked;
     ssize_t chunk_size;
     int body_fd;
-    std::string body;
     std::string statuscode () const;
     std::string to_string ();
     void clear ();
 };
 
-class request_type {
+class request_type : public message_type {
 public:
     std::string method;
     std::string uri;
-    std::string http_version;
-    std::map<std::string, std::string> header;
-    ssize_t content_length;
-    std::string body;
     void clear ();
-    bool header_token (std::string const& str, std::vector<std::string>& tokens);
-    ssize_t canonical_length (std::string const& s);
 };
 
 class request_decoder_type {

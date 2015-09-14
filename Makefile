@@ -1,5 +1,7 @@
 EXECUTABLE=http-server
 OBJECTS=tcpserver.o \
+	token_list.o \
+	message.o \
 	response.o \
 	request.o \
 	event_handler.o \
@@ -21,6 +23,12 @@ http-server : $(OBJECTS)
 
 tcpserver.o : server.hpp tcpserver.cpp
 	$(CXX) $(CXXFLAGS) -c tcpserver.cpp
+
+token_list.o : server.hpp token_list.cpp
+	$(CXX) $(CXXFLAGS) -c token_list.cpp
+
+message.o : server.hpp message.cpp
+	$(CXX) $(CXXFLAGS) -c message.cpp
 
 response.o : server.hpp response.cpp
 	$(CXX) $(CXXFLAGS) -c response.cpp

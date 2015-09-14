@@ -339,9 +339,9 @@ event_handler_type::prepare_request_chunked ()
 {
     message_handler_type h;
     kont = KRESPONSE;
-    std::vector<std::string> te;
-    request.header_token (request.header["transfer-encoding"], te);
-    if (te.empty () || te.back () != "chunked")
+    token_list_type te;
+    te.decode_simple (request.header["transfer-encoding"], 1);
+    if (te.size () != 1 || ! te.list.back ().equal_token ("chunked"))
         h.unsupported_media_type (*this);
     else
         kont = KREQUEST_CHUNKED;
@@ -367,7 +367,7 @@ event_handler_type::prepare_request_length ()
 {
     message_handler_type h;
     kont = KRESPONSE;
-    ssize_t n = request.canonical_length (request.header["content-length"]);
+    ssize_t n = request.canonical_length ();
     if (-400 == n)
         h.bad_request (*this);
     else if (-413 == n)
@@ -405,13 +405,13 @@ void
 event_handler_type::decide_transfer_encoding ()
 {
     if (response.header.count ("transfer-encoding") > 0) {
-        std::vector<std::string> te;
-        request.header_token (response.header["transfer-encoding"], te);
-        if (te.size () != 1 || te.back () != "chunked")
+        token_list_type te;
+        te.decode_simple (response.header["transfer-encoding"], 1);
+        if (te.size () != 1 || ! te.list.back ().equal_token ("chunked"))
             response.header.erase ("transfer-encoding");
     }
     if (response.header.count ("content-length") > 0) {
-        ssize_t n = request.canonical_length (response.header["content-length"]);
+        ssize_t n = response.canonical_length ();
         if (n < 0)
             response.header.erase ("content-length");
         else
@@ -430,12 +430,6 @@ event_handler_type::decide_transfer_encoding ()
     if (response.header.count ("transfer-encoding") == 0
             && response.header.count ("content-length") == 0)
         response.header["connection"] = "close";
-}
-
-static inline bool
-find_item (std::vector<std::string> const& a, char const* s)
-{
-    return std::find (a.begin (), a.end (), s) != a.end ();
 }
 
 bool
@@ -483,17 +477,17 @@ event_handler_type::finalize_response ()
 bool
 event_handler_type::done_connection ()
 {
-    std::vector<std::string> rqconn;
-    std::vector<std::string> rsconn;
+    token_list_type rqconn;
+    token_list_type rsconn;
     if (MAX_KEEPALIVE_REQUESTS <= ++keepalive_requests)
         return true;
     if (request.header.count ("connection") > 0)
-        request.header_token (request.header["connection"], rqconn);
+        rqconn.decode_simple (request.header["connection"], 1);
     if (response.header.count ("connection") > 0)
-        request.header_token (response.header["connection"], rsconn);
-    if (find_item (rqconn, "close") || find_item (rsconn, "close"))
+        rsconn.decode_simple (response.header["connection"], 1);
+    if (rqconn.find ("close") || rsconn.find ("close"))
         return true;
     if (response.http_version < "HTTP/1.1")
-        return ! find_item (rqconn, "keep-alive");
+        return ! rqconn.find ("keep-alive");
     return false;
 }
