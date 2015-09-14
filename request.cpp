@@ -154,7 +154,7 @@ request_decoder_type::clear ()
 bool
 request_decoder_type::good () const
 {
-    return 17 == next_state;
+    return 15 == next_state;
 }
 
 bool
@@ -166,13 +166,13 @@ request_decoder_type::bad () const
 bool
 request_decoder_type::partial () const
 {
-    return 1 <= next_state && next_state <= 16;
+    return 1 <= next_state && next_state <= 14;
 }
 
 bool
 request_decoder_type::put (int const c, request_type& req)
 {
-    static const int SHIFT[18][15] = {
+    static const int SHIFT[16][15] = {
         // CR  LF TAB  SP   :   =   "   \   ;   ,   0 HEX tch vch
         {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0},
         {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  2,  2,  2,  0}, // S1: tchar S2
@@ -183,15 +183,32 @@ request_decoder_type::put (int const c, request_type& req)
         {0, 7,  0,  0,  0,  0,  0,  0,  0,  0,  0,  6,  6,  6,  6}, // S6: CR S7 | vchar S6
         {0, 0,  8,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S7: LF S8
         {0,16,  0,  0,  0,  0,  0,  0,  0,  0,  0,  9,  9,  9,  0}, // S8: CR S16 | tchar S9
-        {2, 0,  0,  0,  0, 10,  0,  0,  0,  0,  0,  9,  9,  9,  0}, // S9: ':' S10 | tchar S9
-        {0,13,  0, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S10: CR S13 | [\t ] S10 | vchar S11
-        {0,13,  0, 12, 12, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S11: CR S13 | [\t ] S12 | vchar S11
-        {0,13,  0, 12, 12, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S12: CR S13 | [\t ] S12 | vchar S11
-        {0, 0, 14,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S13: LF S14
-        {0,16,  0, 15, 15,  0,  0,  0,  0,  0,  0,  9,  9,  9,  0}, // S14: CR S16 | [\t ] S15 | tchar S9
-        {0,13,  0, 15, 15, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S15: CR S13 | [\t ] S15 | vchar S11
-        {2, 0, 17,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S16: LF S17
-        {1, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S17: MATCH
+        {0, 0,  0,  0,  0, 10,  0,  0,  0,  0,  0,  9,  9,  9,  0}, // S9: ':' S10 | tchar S9
+        {0,12,  0, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S10: CR S12 | [\t ] S10 | vchar S11
+        {0,12,  0, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11}, // S11: CR S12 | [\t ] S11 | vchar S11
+        {0, 0, 13,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S12: LF S13
+        {0,14,  0, 10, 10,  0,  0,  0,  0,  0,  0,  9,  9,  9,  0}, // S13: CR S14 | [\t ] S10 | tchar S9
+        {0, 0, 15,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S14: LF S15
+        {1, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S15: MATCH
+    };
+    static const int ACTION[16][15] = {
+        // CR  LF TAB  SP   :   =   "   \   ;   ,   0 HEX tch vch
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0},
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  0}, // S1: tchar A1
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  0}, // S2: SP | tchar A1
+        {0, 0,  0,  0,  0,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2}, // S3: vchar A2
+        {0, 0,  0,  0,  0,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2}, // S4: SP | vchar A2
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  3}, // S5: vchar A3
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  3,  3,  3,  3}, // S6: CR | vchar A3
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S7: LF
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  4,  4,  0}, // S8: CR | tchar A4
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  4,  4,  4,  0}, // S9: ':' | tchar A4
+        {0, 0,  0,  0,  0,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5}, // S10: CR | [\t ] | vchar A5
+        {0, 0,  0,  6,  6,  5,  5,  5,  5,  5,  5,  5,  5,  5,  5}, // S11: CR | [\t ] A6 | vchar A5
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S12: LF
+        {0, 8,  0,  7,  7,  0,  0,  0,  0,  0,  0,  8,  8,  8,  0}, // S13: CR A8 | [\t ] A7 | tchar A8
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S14: LF
+        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S15: MATCH
     };
     if (! partial ())
         return false;
@@ -204,7 +221,35 @@ request_decoder_type::put (int const c, request_type& req)
     next_state = 0 == cls ? 0 : SHIFT[prev_state][cls];
     if (0 == next_state)
         return false;
-    if ((14 == prev_state) && (2 & SHIFT[next_state][0])) {
+    switch (ACTION[prev_state][cls]) {
+    case 1:
+        req.method.push_back (c);           // case-sensitive (RFC 7230)
+        break;
+    case 2:
+        req.uri.push_back (c);
+        break;
+    case 3:
+        req.http_version.push_back (c);     // case-sensitive (RFC 7230)
+        break;
+    case 4:
+        name.push_back (std::tolower (c));  // case-insensitive (RFC 7230)
+        break;
+    case 5:
+        value.append (spaces);
+        value.push_back (c);
+        spaces.clear ();
+        break;
+    case 6:
+        spaces.push_back (c);
+        break;
+    case 7:
+        spaces = " ";
+        break;
+    case 8:
+        if (++nfield > LIMIT_REQUEST_FIELDS) {
+            next_state = 0;
+            return false;
+        }
         if (req.header.count (name) == 0)
             req.header[name] = value;
         else
@@ -212,33 +257,10 @@ request_decoder_type::put (int const c, request_type& req)
         name.clear ();
         value.clear ();
         spaces.clear ();
-        nbyte = 0;
-        if (nfield++ > LIMIT_REQUEST_FIELDS) {
-            next_state = 0;
-            return false;
-        }
-    }
-    if (11 == next_state) {
-        if (12 == prev_state) {
-            value.append (spaces);
-            spaces.clear ();
-        }
-        else if (15 == prev_state) {
-            value.push_back (' ');
-            spaces.clear ();
-        }
-        value.push_back (c);
-    }
-    else if (12 == next_state)
-        spaces.push_back (c);
-    else if (9 == next_state)
         name.push_back (std::tolower (c));  // case-insensitive (RFC 7230)
-    else if (2 == next_state)
-        req.method.push_back (c);           // case-sensitive (RFC 7230)
-    else if (4 == next_state)
-        req.uri.push_back (c);
-    else if (6 == next_state)
-        req.http_version.push_back (c);     // case-sensitive (RFC 7230)
+        nbyte = 0;
+        break;
+    }
     return partial ();
 }
 
