@@ -87,38 +87,42 @@ request_condition_type::weak_compare (std::string const& etag0, std::string cons
 bool
 request_condition_type::decode_field (std::string const& field, std::vector<std::string>& list)
 {
-    static const int SHIFT[11][8] = {
-        // \s   ,   *   W   /   "   .
-        {0, 0,  0,  0,  0,  0,  0,  0},
-        {0, 0,  2,  9,  3,  0,  5,  0}, // S1: ',' S2 | '*' S9 | 'W' S3 | '"' S5
-        {0, 2,  2,  0,  3,  0,  5,  0}, // S2: \s S2 | ',' S2 | 'W' S3 | '"' S5
-        {2, 0,  0,  0,  0,  4,  0,  0}, // S3: '/' S4
-        {2, 0,  0,  0,  0,  0,  5,  0}, // S4: '"' S5
-        {2, 0,  0,  5,  5,  5,  6,  5}, // S5: [\x21\x23-\x7e] S5 | '"' S6
-        {7, 7,  8,  0,  0,  0,  0,  0}, // S6: \s S7 | ',' S8 | $
-        {1, 7,  8,  0,  0,  0,  0,  0}, // S7: \s S7 | ',' S8 | $
-        {1, 8,  8,  0,  3,  0,  5,  0}, // S8: \s S8 | ',' S8 | 'W' S3 | '"' S5 | $
-        {7,10,  0,  0,  0,  0,  0,  0}, // S9: \s S10 | $
-        {1,10,  0,  0,  0,  0,  0,  0}, // S10: \s S10 | $
+    static const int SHIFT[10][9] = {
+    //         \s   ,   *   "   W   /   .   $
+        {   0,  0,  0,  0,  0,  0,  0,  0,  0},
+        {   0,  1,  2,  8,  5,  3,  0,  0,  0}, // S1: \s S1 | ',' S2 | '*' S8 | '"' S5 | 'W' S3
+        {   0,  2,  2,  0,  5,  3,  0,  0,  0}, // S2: \s S2 | ',' S2 | '"' S5 | 'W' S3
+        {   0,  0,  0,  0,  0,  0,  4,  0,  0}, // S3: '/' S4
+        {   0,  0,  0,  0,  5,  0,  0,  0,  0}, // S4: '"' S5
+        {   0,  0,  0,  0,  6,  0,  0,  5,  0}, // S5: '"' S6 | [\x21\x23-\x7e] S5
+        {   0,  6,  7,  0,  0,  0,  0,  0,  9}, // S6: \s S6 | ',' S7 | $ S9
+        {   0,  7,  7,  0,  5,  3,  0,  0,  9}, // S7: \s S7 | ',' S7 | '"' S5 | 'W' S3 | $ S9
+        {   0,  8,  0,  0,  0,  0,  0,  0,  9}, // S8: \s S8 | $ S9
+        {   1,  0,  0,  0,  0,  0,  0,  0,  0}, // S9: MATCH
     };
     list.clear ();
     std::string etag;
     int next_state = 1;
-    for (int c : field) {
-        int cls = '\t' == c ? 1 : ' ' == c ? 1 : ',' == c ? 2 : '*' == c ? 3
-                : 'W' == c ? 4 : '/' == c ? 5 : '"' == c ? 6 : 0;
+    std::string::const_iterator s = field.cbegin ();
+    std::string::const_iterator const e = field.cend ();
+    for (; s <= e; ++s) {
+        int ch = s == e ? '\0' : *s;
+        int cls = s == e ? 8
+                : '\t' == ch ? 1 : ' ' == ch ? 1
+                : '"' == ch ? 4
+                : (5 == next_state && 0x21 <= ch && ch <= 0x7e) ? 7
+                : ',' == ch ? 2 : '*' == ch ? 3
+                : 'W' == ch ? 5 : '/' == ch ? 6 : 0;
         int prev_state = next_state;
-        if (5 == prev_state && 0 == cls)
-            cls = (0x21 <= c && c <= 0x7e) ? 7 : 0;
-        if (0 == cls || 0 == SHIFT[prev_state][cls])
-            return false;
-        next_state = SHIFT[prev_state][cls];
-        if (2 & SHIFT[next_state][0])
-            etag.push_back (c);
-        if (4 & SHIFT[next_state][0]) {
+        next_state = cls ? SHIFT[prev_state][cls] : 0;
+        if (! next_state)
+            break;
+        if (3 <= cls && cls <= 7)
+            etag.push_back (ch);
+        else if ((6 == prev_state || 8 == prev_state) && (2 == cls || 8 == cls)) {
             list.push_back (etag);
             etag.clear ();
         }
     }
-    return (1 & SHIFT[next_state][0]);
+    return (1 & SHIFT[next_state][0]) != 0;
 }
