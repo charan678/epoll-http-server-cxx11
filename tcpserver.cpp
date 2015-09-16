@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 #include "server.hpp"
 
+namespace http {
+
 namespace {
     volatile std::sig_atomic_t g_signal_alrm = 0;
     volatile std::sig_atomic_t g_signal_status = 0;
@@ -51,14 +53,14 @@ start_interval_timer (long const sec, long const usec)
 }
 
 int
-main (int argc, char *argv[])
+main_loop (int argc, char *argv[])
 {
     std::setlocale (LC_ALL, "C");
     std::signal (SIGPIPE, SIG_IGN);
     set_signal_handler (SIGINT, signal_handler, 0);
     set_signal_handler (SIGALRM, signal_handler, SA_RESTART);
     start_interval_timer (1L, 0);
-    epoll_mplex_type mplex (LISTENER_COUNT + MAX_CONNECTIONS);
+    mplex_epoll_type mplex (LISTENER_COUNT + MAX_CONNECTIONS);
     tcpserver_type server (MAX_CONNECTIONS, TIMEOUT, mplex);
     server.run (SERVER_PORT, BACKLOG);
     return EXIT_SUCCESS;
@@ -228,4 +230,12 @@ tcpserver_type::fd_set_nonblock (int fd)
     if ((flag = fcntl (fd, F_GETFL, 0)) >= 0)
         flag = fcntl (fd, F_SETFL, flag | O_NONBLOCK);
     return flag;
+}
+
+}//namespace http
+
+int
+main (int argc, char *argv[])
+{
+    return http::main_loop (argc, argv);
 }

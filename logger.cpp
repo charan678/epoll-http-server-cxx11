@@ -3,7 +3,9 @@
 #include <utility>
 #include <cerrno>
 #include <cstring>
-#include "server.hpp"
+#include "http.hpp"
+
+namespace http {
 
 logger_type::logger_type () {}
 logger_type::~logger_type () {}
@@ -23,7 +25,7 @@ logger_type::put_error (std::string const& s)
     std::string e = std::strerror (errno);
     if (! s.empty ())
         e = s + ":" + e;
-    std::string ts = to_string_time ("%a %b %e %H:%M:%S %Y");
+    std::string ts = time_to_string ("%a %b %e %H:%M:%S %Y");
     std::string t = "[" + ts + "] [error] " + e;
     std::cout << t << std::endl;
 }
@@ -31,7 +33,7 @@ logger_type::put_error (std::string const& s)
 void
 logger_type::put_info (std::string const& s)
 {
-    std::string ts = to_string_time ("%a %b %e %H:%M:%S %Y");
+    std::string ts = time_to_string ("%a %b %e %H:%M:%S %Y");
     std::string t = "[" + ts + "] [info] " + s;
     std::cout << t << std::endl;
 }
@@ -39,7 +41,7 @@ logger_type::put_info (std::string const& s)
 void
 logger_type::put_error (std::string const& ho, std::string const& s)
 {
-    std::string ts = to_string_time ("%a %b %e %H:%M:%S %Y");
+    std::string ts = time_to_string ("%a %b %e %H:%M:%S %Y");
     std::string t = "[" + ts + "] [error] [client " + ho +"] " + s;
     std::cout << t << std::endl;
 }
@@ -71,7 +73,7 @@ quote (std::string const& s)
 void
 logger_type::put (std::string const& ho, request_type& req, response_type& res)
 {
-    std::string ts = to_string_time ("%d/%b/%Y:%H:%M:%S %z");
+    std::string ts = time_to_string ("%d/%b/%Y:%H:%M:%S %z");
     std::string rl = "-";
     if (! req.method.empty ())
         rl = "\"" + quote (req.method)
@@ -81,3 +83,5 @@ logger_type::put (std::string const& ho, request_type& req, response_type& res)
         + std::to_string (res.code) + " " + std::to_string (res.content_length);
     std::cout << t << std::endl;
 }
+
+}//namespace http

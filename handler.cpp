@@ -3,8 +3,10 @@
 #include <utility>
 #include "server.hpp"
 
+namespace http {
+
 bool
-message_handler_type::process (event_handler_type& r)
+handler_type::process (http::connection_type& r)
 {
     if (r.request.method == "GET")
         return get (r);
@@ -18,25 +20,25 @@ message_handler_type::process (event_handler_type& r)
 }
 
 bool
-message_handler_type::get (event_handler_type& r)
+handler_type::get (http::connection_type& r)
 {
     return not_found (r);
 }
 
 bool
-message_handler_type::post (event_handler_type& r)
+handler_type::post (http::connection_type& r)
 {
     return method_not_allowed (r);
 }
 
 bool
-message_handler_type::put (event_handler_type& r)
+handler_type::put (http::connection_type& r)
 {
     return method_not_allowed (r);
 }
 
 bool
-message_handler_type::not_modified (event_handler_type& r)
+handler_type::not_modified (http::connection_type& r)
 {
     r.response.content_length = 0;
     r.response.code = 304;
@@ -45,7 +47,7 @@ message_handler_type::not_modified (event_handler_type& r)
 }
 
 bool
-message_handler_type::bad_request (event_handler_type& r)
+handler_type::bad_request (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 400);
@@ -59,7 +61,7 @@ message_handler_type::bad_request (event_handler_type& r)
 }
 
 bool
-message_handler_type::not_found (event_handler_type& r)
+handler_type::not_found (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 404);
@@ -72,7 +74,7 @@ message_handler_type::not_found (event_handler_type& r)
 }
 
 bool
-message_handler_type::method_not_allowed (event_handler_type& r)
+handler_type::method_not_allowed (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 405);
@@ -84,7 +86,7 @@ message_handler_type::method_not_allowed (event_handler_type& r)
 }
 
 bool
-message_handler_type::request_timeout (event_handler_type& r)
+handler_type::request_timeout (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 408);
@@ -96,7 +98,7 @@ message_handler_type::request_timeout (event_handler_type& r)
 }
 
 bool
-message_handler_type::length_required (event_handler_type& r)
+handler_type::length_required (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 411);
@@ -109,7 +111,7 @@ message_handler_type::length_required (event_handler_type& r)
 }
 
 bool
-message_handler_type::precondition_failed (event_handler_type& r)
+handler_type::precondition_failed (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 411);
@@ -122,7 +124,7 @@ message_handler_type::precondition_failed (event_handler_type& r)
 }
 
 bool
-message_handler_type::request_entity_too_large (event_handler_type& r)
+handler_type::request_entity_too_large (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 413);
@@ -137,7 +139,7 @@ message_handler_type::request_entity_too_large (event_handler_type& r)
 }
 
 bool
-message_handler_type::unsupported_media_type (event_handler_type& r)
+handler_type::unsupported_media_type (http::connection_type& r)
 {
     html_builder_type html;
     error_start (r, html, 415);
@@ -150,7 +152,7 @@ message_handler_type::unsupported_media_type (event_handler_type& r)
 }
 
 void
-message_handler_type::error_start (event_handler_type& r, html_builder_type& html, int code)
+handler_type::error_start (http::connection_type& r, html_builder_type& html, int code)
 {
     r.response.code = code;
     std::string title = r.response.statuscode ();
@@ -165,7 +167,7 @@ message_handler_type::error_start (event_handler_type& r, html_builder_type& htm
 }
 
 void
-message_handler_type::error_end (event_handler_type& r, html_builder_type& html)
+handler_type::error_end (http::connection_type& r, html_builder_type& html)
 {
     html <<
         "</body>\n"
@@ -175,3 +177,5 @@ message_handler_type::error_end (event_handler_type& r, html_builder_type& html)
     r.response.header["content-type"] = "text/html; charset=UTF-8";
     r.response.header["content-length"] = std::to_string (r.response.body.size ());
 }
+
+}//namespace http

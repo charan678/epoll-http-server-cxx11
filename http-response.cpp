@@ -1,7 +1,8 @@
 #include <map>
 #include <string>
-#include "server.hpp"
+#include "http.hpp"
 
+namespace http {
 std::string
 response_type::statuscode () const
 {
@@ -63,7 +64,7 @@ std::string
 response_type::to_string ()
 {
     if (header.count ("date") == 0)
-        header["date"] = to_string_time ("%a, %d %b %Y %H:%M:%S GMT");
+        header["date"] = time_to_string ("%a, %d %b %Y %H:%M:%S GMT");
     if (header.count ("server") == 0)
         header["server"] = "Http-Server/0.1 (Linux)";
     std::string t = http_version + " " + statuscode () + "\r\n";
@@ -102,3 +103,5 @@ response_type::clear ()
     body_fd = -1;
     body.clear ();
 }
+
+}//namespace http

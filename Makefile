@@ -1,70 +1,162 @@
-EXECUTABLE=http-server
-OBJECTS=tcpserver.o \
-	token_list.o \
-	message.o \
-	response.o \
-	request.o \
-	event_handler.o \
-	html_builder.o \
-	message_handler.o \
-	test_handler.o \
-	file_handler.o \
-	request_condition.o \
-	to_string_time.o \
+PROGRAM=http-server
+OBJECTS=http-response.o \
+	http-request.o \
+	http-connection.o \
+	http-condition.o \
+	decode-tocclass.o \
+	decode-simple-token.o \
+	decode-token.o \
+	decode-content-length.o \
+	decode-etag.o \
+	decode-request.o \
+	decode-chunk.o \
+	time_to_string.o \
+	time_decode.o \
 	logger.o \
-	io_mplex.o \
-	epoll_mplex.o
+	html-builder.o \
+	handler.o \
+	handler-file.o \
+	handler-test.o \
+	mplex-io.o \
+	mplex-epoll.o \
+	tcpserver.o
 
 CXX=clang++ -std=c++11
 CXXFLAGS=-Wall -O2
 
-http-server : $(OBJECTS)
-	$(CXX) -o $(EXECUTABLE) $(OBJECTS)
+$(PROGRAM) : $(OBJECTS)
+	$(CXX) -o $(PROGRAM) $(OBJECTS)
+
+http-response.o : http.hpp http-response.cpp
+	$(CXX) $(CXXFLAGS) -c http-response.cpp
+
+http-request.o : http.hpp http-request.cpp
+	$(CXX) $(CXXFLAGS) -c http-request.cpp
+
+http-connection.o : server.hpp http-connection.cpp
+	$(CXX) $(CXXFLAGS) -c http-connection.cpp
+
+http-condition.o : http.hpp http-condition.cpp
+	$(CXX) $(CXXFLAGS) -c http-condition.cpp
+
+decode-tocclass.o : http.hpp decode-tocclass.cpp
+	$(CXX) $(CXXFLAGS) -c decode-tocclass.cpp
+
+decode-simple-token.o : http.hpp decode-simple-token.cpp
+	$(CXX) $(CXXFLAGS) -c decode-simple-token.cpp
+
+decode-token.o : http.hpp decode-token.cpp
+	$(CXX) $(CXXFLAGS) -c decode-token.cpp
+
+decode-content-length.o : http.hpp decode-content-length.cpp
+	$(CXX) $(CXXFLAGS) -c decode-content-length.cpp
+
+decode-etag.o : http.hpp decode-etag.cpp
+	$(CXX) $(CXXFLAGS) -c decode-etag.cpp
+
+decode-request.o : http.hpp decode-request.cpp
+	$(CXX) $(CXXFLAGS) -c decode-request.cpp
+
+decode-chunk.o : http.hpp decode-chunk.cpp
+	$(CXX) $(CXXFLAGS) -c decode-chunk.cpp
+
+time_to_string.o : http.hpp time_to_string.cpp
+	$(CXX) $(CXXFLAGS) -c time_to_string.cpp
+
+time_decode.o : http.hpp time_decode.cpp
+	$(CXX) $(CXXFLAGS) -c time_decode.cpp
+
+logger.o : http.hpp logger.cpp
+	$(CXX) $(CXXFLAGS) -c logger.cpp
+
+html-builder.o : html-builder.hpp html-builder.cpp
+	$(CXX) $(CXXFLAGS) -c html-builder.cpp
+
+handler.o : server.hpp handler.cpp
+	$(CXX) $(CXXFLAGS) -c handler.cpp
+
+handler-file.o : server.hpp handler-file.cpp
+	$(CXX) $(CXXFLAGS) -c handler-file.cpp
+
+handler-test.o : server.hpp handler-test.cpp
+	$(CXX) $(CXXFLAGS) -c handler-test.cpp
+
+mplex-io.o : server.hpp mplex-io.cpp
+	$(CXX) $(CXXFLAGS) -c mplex-io.cpp
+
+mplex-epoll.o : server.hpp mplex-epoll.cpp
+	$(CXX) $(CXXFLAGS) -c mplex-epoll.cpp
 
 tcpserver.o : server.hpp tcpserver.cpp
 	$(CXX) $(CXXFLAGS) -c tcpserver.cpp
 
-token_list.o : server.hpp token_list.cpp
-	$(CXX) $(CXXFLAGS) -c token_list.cpp
+# TESTS
 
-message.o : server.hpp message.cpp
-	$(CXX) $(CXXFLAGS) -c message.cpp
+TEST02=tests/02.decode-simple-token.t
+TEST02SPEC=tests/02.decode-simple-token.cpp
+TEST02OBJ=decode-tocclass.o decode-simple-token.o
 
-response.o : server.hpp response.cpp
-	$(CXX) $(CXXFLAGS) -c response.cpp
+TEST03=tests/03.decode-token.t
+TEST03SPEC=tests/03.decode-token.cpp
+TEST03OBJ=decode-tocclass.o decode-token.o
 
-request.o : server.hpp request.cpp
-	$(CXX) $(CXXFLAGS) -c request.cpp
+TEST04=tests/04.decode-content-length.t
+TEST04SPEC=tests/04.decode-content-length.cpp
+TEST04OBJ=decode-tocclass.o decode-content-length.o
 
-event_handler.o : server.hpp event_handler.cpp
-	$(CXX) $(CXXFLAGS) -c event_handler.cpp
+TEST05=tests/05.decode-request.t
+TEST05SPEC=tests/05.decode-request.cpp
+TEST05OBJ=decode-tocclass.o http-request.o decode-request.o
 
-html_builder.o : server.hpp html_builder.cpp
-	$(CXX) $(CXXFLAGS) -c html_builder.cpp
+TEST06=tests/06.decode-chunk.t
+TEST06SPEC=tests/06.decode-chunk.cpp
+TEST06OBJ=decode-tocclass.o decode-chunk.o
 
-message_handler.o : server.hpp message_handler.cpp
-	$(CXX) $(CXXFLAGS) -c message_handler.cpp
+TEST07=tests/07.decode-etag.t
+TEST07SPEC=tests/07.decode-etag.cpp
+TEST07OBJ=decode-etag.o
 
-test_handler.o : server.hpp test_handler.cpp
-	$(CXX) $(CXXFLAGS) -c test_handler.cpp
+TEST08=tests/08.http-condition.t
+TEST08SPEC=tests/08.http-condition.cpp
+TEST08OBJ=http-condition.o decode-etag.o time_decode.o
 
-file_handler.o : server.hpp file_handler.cpp
-	$(CXX) $(CXXFLAGS) -c file_handler.cpp
+TESTS=$(TEST02) \
+	$(TEST03) \
+	$(TEST04) \
+	$(TEST05) \
+	$(TEST06) \
+	$(TEST07) \
+	$(TEST08)
 
-request_condition.o : server.hpp request_condition.cpp
-	$(CXX) $(CXXFLAGS) -c request_condition.cpp
+test : $(TESTS)
+	for i in $(TESTS); do echo $$i; $$i; done
 
-to_string_time.o : server.hpp to_string_time.cpp
-	$(CXX) $(CXXFLAGS) -c to_string_time.cpp
+.PHONY : build-tests
 
-logger.o : server.hpp logger.cpp
-	$(CXX) $(CXXFLAGS) -c logger.cpp
+build-tests : $(TESTS)
 
-io_mplex.o : server.hpp io_mplex.cpp
-	$(CXX) $(CXXFLAGS) -c io_mplex.cpp
+$(TEST02) : $(TEST02SPEC) $(TEST02OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST02) $(TEST02SPEC) $(TEST02OBJ)
 
-epoll_mplex.o : server.hpp epoll_mplex.cpp
-	$(CXX) $(CXXFLAGS) -c epoll_mplex.cpp
+$(TEST03) : $(TEST03SPEC) $(TEST03OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST03) $(TEST03SPEC) $(TEST03OBJ)
+
+$(TEST04) : $(TEST04SPEC) $(TEST04OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST04) $(TEST04SPEC) $(TEST04OBJ)
+
+$(TEST05) : $(TEST05SPEC) $(TEST05OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST05) $(TEST05SPEC) $(TEST05OBJ)
+
+$(TEST06) : $(TEST06SPEC) $(TEST06OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST06) $(TEST06SPEC) $(TEST06OBJ)
+
+$(TEST07) : $(TEST07SPEC) $(TEST07OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST07) $(TEST07SPEC) $(TEST07OBJ)
+
+$(TEST08) : $(TEST08SPEC) $(TEST08OBJ)
+	$(CXX) $(CXXFLAGS) -o $(TEST08) $(TEST08SPEC) $(TEST08OBJ)
+
+.PHONY : clean
 
 clean :
-	rm -f $(EXECUTABLE) $(OBJECTS)
+	rm -f $(PROGRAM) $(OBJECTS) $(TESTS)

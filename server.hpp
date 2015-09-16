@@ -4,7 +4,10 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <ctime>
+#include "http.hpp"
+#include "html-builder.hpp"
+
+namespace http {
 
 enum {
     SERVER_PORT = 10080,
@@ -29,10 +32,6 @@ enum {
 };
 
 static inline std::string documentroot () { return "public"; }
-
-std::string to_string_time (std::string const& fmt);
-std::string to_string_time (std::string const& fmt, std::time_t epoch);
-std::time_t decode_time (std::string const& fmt, std::string const& datime);
 
 template <class NODE_T>
 class ring_in_vector {
@@ -84,111 +83,6 @@ private:
     std::vector<NODE_T> node;
 };
 
-struct token_type {
-    std::string token;
-    std::vector<std::string> parameter;
-    bool equal_token (std::string const& x) const { return token == x; }
-    void clear () { token.clear (); parameter.clear (); }
-};
-
-struct token_list_type {
-    std::vector<token_type> list;
-    std::size_t find (std::string const& x) const;
-    std::size_t size () const { return list.size (); }
-    bool decode_simple (std::string const& str, int const min = 1);
-    bool decode (std::string const& str, int const min = 1);
-};
-
-class message_type {
-public:
-    std::string http_version;
-    std::map<std::string, std::string> header;
-    ssize_t content_length;
-    std::string body;
-    ssize_t canonical_length ();
-};
-
-class response_type : public message_type {
-public:
-    int code;
-    bool has_body;
-    bool chunked;
-    ssize_t chunk_size;
-    int body_fd;
-    std::string statuscode () const;
-    std::string to_string ();
-    void clear ();
-};
-
-class request_type : public message_type {
-public:
-    std::string method;
-    std::string uri;
-    void clear ();
-};
-
-class request_decoder_type {
-public:
-    request_decoder_type ();
-    bool put (int c, request_type& req);
-    void clear ();
-    bool good () const;
-    bool bad () const;
-    bool partial () const;
-
-private:
-    int next_state;
-    std::string name;
-    std::string value;
-    std::string spaces;
-    std::size_t nfield;
-    std::size_t nbyte;
-};
-
-class chunk_decoder_type {
-public:
-    enum {CHUNK_SIZE_LIMIT = 1024*1024};
-    int chunk_size_limit;
-    ssize_t content_length;
-    int chunk_size;
-    chunk_decoder_type ();
-    bool put (int c, std::string& body);
-    void clear ();
-    bool good () const;
-    bool bad () const;
-    bool partial () const;
-
-private:
-    int next_state;
-};
-
-class html_builder_type {
-public:
-    html_builder_type ();
-    html_builder_type& operator << (char const* s);
-    html_builder_type& operator << (int const i);
-    html_builder_type& operator << (std::string const& s);
-    std::string const& string () const;
-
-private:
-    std::string buffer;
-};
-
-class logger_type {
-public:
-    static logger_type& getinstance ();
-    void put_error (std::string const& s);
-    void put_error (std::string const& ho, std::string const& s);
-    void put_info (std::string const& s);
-    void put (std::string const& ho, request_type& req, response_type& res);
-
-private:
-    logger_type ();
-    ~logger_type ();
-    logger_type (logger_type const&);
-    logger_type& operator= (logger_type const&);
-};
-
 struct handle_type {
     std::size_t const id;
     std::size_t prev, next;
@@ -205,10 +99,10 @@ struct handle_type {
           state (FREE), ev_mask (0), events (0) {} 
 };
 
-class io_mplex_type {
+class mplex_io_type {
 public:
-    io_mplex_type (std::size_t const n);
-    virtual ~io_mplex_type () {};
+    mplex_io_type (std::size_t const n);
+    virtual ~mplex_io_type () {};
     virtual int add (uint32_t const trigger, int const fd, std::size_t const handler_id) = 0;
     virtual int mod (uint32_t const trigger, std::size_t const id) = 0;
     virtual int drop (uint32_t const events, std::size_t const id) = 0;
@@ -247,10 +141,10 @@ protected:
     }
 };
 
-class epoll_mplex_type : public io_mplex_type {
+class mplex_epoll_type : public mplex_io_type {
 public:
-    epoll_mplex_type (std::size_t const n);
-    ~epoll_mplex_type ();
+    mplex_epoll_type (std::size_t const n);
+    ~mplex_epoll_type ();
     int add (uint32_t const trigger, int const fd, std::size_t const handler_id);
     int mod (uint32_t const trigger, std::size_t const id);
     int drop (uint32_t const events, std::size_t const id);
@@ -264,7 +158,7 @@ private:
 
 class tcpserver_type;
 
-class event_handler_type {
+class connection_type {
 public:
     enum {
         KREQUEST_HEADER_READ,
@@ -292,13 +186,13 @@ public:
     response_type response;
     request_type request;
 
-    event_handler_type (std::size_t a, std::size_t b, std::size_t c)
+    connection_type (std::size_t a, std::size_t b, std::size_t c)
         : id (a), prev (b), next (c),
           handle_id (-1), state (FREE), remote_addr (),
           response (), request (),
           kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
-          reqdecoder (), chunkdecoder () {}
+          decoder_request (), decoder_chunk () {}
     ssize_t iotransfer (tcpserver_type& loop);
     int on_accept (tcpserver_type& loop);
     int on_read (tcpserver_type& loop);
@@ -316,8 +210,8 @@ private:
     ssize_t wrpos;
     ssize_t wrpos1;
     ssize_t wrsize;
-    request_decoder_type reqdecoder;
-    chunk_decoder_type chunkdecoder;
+    decoder_request_type decoder_request;
+    decoder_chunk_type decoder_chunk;
     uint32_t iowait_mask;
     ssize_t ioresult;
     int keepalive_requests;
@@ -334,76 +228,56 @@ private:
     bool done_connection ();
 };
 
-class message_handler_type {
+class handler_type {
 public:
-    message_handler_type () {}
-    virtual ~message_handler_type () {}
+    handler_type () {}
+    virtual ~handler_type () {}
 
-    virtual bool process (event_handler_type& r);
-    virtual bool get (event_handler_type& r);
-    virtual bool put (event_handler_type& r);
-    virtual bool post (event_handler_type& r);
+    virtual bool process (connection_type& r);
+    virtual bool get (connection_type& r);
+    virtual bool put (connection_type& r);
+    virtual bool post (connection_type& r);
 
-    bool not_modified (event_handler_type& r);
+    bool not_modified (connection_type& r);
 
-    bool bad_request (event_handler_type& r);
-    bool not_found (event_handler_type& r);
-    bool method_not_allowed (event_handler_type& r);
-    bool request_timeout (event_handler_type& r);
-    bool length_required (event_handler_type& r);
-    bool precondition_failed (event_handler_type& r);
-    bool request_entity_too_large (event_handler_type& r);
-    bool unsupported_media_type (event_handler_type& r);
+    bool bad_request (connection_type& r);
+    bool not_found (connection_type& r);
+    bool method_not_allowed (connection_type& r);
+    bool request_timeout (connection_type& r);
+    bool length_required (connection_type& r);
+    bool precondition_failed (connection_type& r);
+    bool request_entity_too_large (connection_type& r);
+    bool unsupported_media_type (connection_type& r);
 
-    void error_start (event_handler_type& r, html_builder_type& html, int code);
-    void error_end (event_handler_type& r, html_builder_type& html);
+    void error_start (connection_type& r, html_builder_type& html, int code);
+    void error_end (connection_type& r, html_builder_type& html);
 };
 
-class test_handler_type : public message_handler_type {
+class handler_test_type : public handler_type {
 public:
-    test_handler_type () {}
-    ~test_handler_type () {}
+    handler_test_type () {}
+    ~handler_test_type () {}
 
-    virtual bool get (event_handler_type& r);
-    virtual bool post (event_handler_type& r);
+    virtual bool get (connection_type& r);
+    virtual bool post (connection_type& r);
 };
 
-class file_handler_type : public message_handler_type {
+class handler_file_type : public handler_type {
 public:
-    file_handler_type () {}
-    ~file_handler_type () {}
+    handler_file_type () {}
+    ~handler_file_type () {}
 
-    virtual bool get (event_handler_type& r);
+    virtual bool get (connection_type& r);
 
 private:
     std::string mime_type (std::string const& path) const;
 };
 
-class request_condition_type {
-public:
-    enum {BAD, FAILED, OK};
-    request_condition_type (std::string const& et, std::time_t tm)
-        : etag (et), mtime (tm) {}
-    int check (std::string const& method, std::map<std::string, std::string>& header);
-
-private:
-    std::string etag;
-    std::time_t mtime;
-
-    int if_match (std::string const& field);
-    int if_none_match (std::string const& field);
-    int if_unmodified_since (std::string const& field);
-    int if_modified_since (std::string const& field);
-    bool strong_compare (std::string const& etag0, std::string const& etag1);
-    bool weak_compare (std::string const& etag0, std::string const& etag1);
-    bool decode_field (std::string const& field, std::vector<std::string>& list);
-};
-
 class tcpserver_type {
 public:
     enum {STOP, RUN};
-    io_mplex_type& mplex;
-    tcpserver_type (std::size_t n, int to, io_mplex_type& m)
+    mplex_io_type& mplex;
+    tcpserver_type (std::size_t n, int to, mplex_io_type& m)
         :  mplex (m), max_connections (n), timeout_ (to),
           listen_port (SERVER_PORT), listen_sock (-1), handlers () {}
     void run (int const port, int const backlog);
@@ -420,10 +294,12 @@ private:
     int timeout_;
     int listen_port;
     int listen_sock;
-    ring_in_vector<event_handler_type> handlers;
+    ring_in_vector<connection_type> handlers;
 
     int initialize (int const port, int const backlog);
     void shutdown ();
 };
+
+}//namespace http
 
 #endif

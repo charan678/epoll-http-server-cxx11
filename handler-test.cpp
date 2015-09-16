@@ -1,7 +1,9 @@
 #include "server.hpp"
 
+namespace http {
+
 bool
-test_handler_type::get (event_handler_type& r)
+handler_test_type::get (http::connection_type& r)
 {
     html_builder_type html;
     html <<
@@ -24,7 +26,7 @@ test_handler_type::get (event_handler_type& r)
 }
 
 bool
-test_handler_type::post (event_handler_type& r)
+handler_test_type::post (http::connection_type& r)
 {
     html_builder_type html;
     html <<
@@ -46,3 +48,5 @@ test_handler_type::post (event_handler_type& r)
     r.response.header["content-length"] = std::to_string (r.response.body.size ());
     return true;
 }
+
+}//namespace http

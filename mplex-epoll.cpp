@@ -3,14 +3,16 @@
 #include <sys/epoll.h>
 #include "server.hpp"
 
-epoll_mplex_type::epoll_mplex_type (std::size_t n)
-    : io_mplex_type (n), epoll_fd (-1), evset ()
+namespace http {
+
+mplex_epoll_type::mplex_epoll_type (std::size_t n)
+    : mplex_io_type (n), epoll_fd (-1), evset ()
 {
     evset = new struct epoll_event[n];
     epoll_fd = epoll_create (n);
 }
 
-epoll_mplex_type::~epoll_mplex_type ()
+mplex_epoll_type::~mplex_epoll_type ()
 {
     close (epoll_fd);
     delete[] evset;
@@ -18,7 +20,7 @@ epoll_mplex_type::~epoll_mplex_type ()
 }
 
 int
-epoll_mplex_type::add (uint32_t const trigger, int const fd, std::size_t const handler_id)
+mplex_epoll_type::add (uint32_t const trigger, int const fd, std::size_t const handler_id)
 {
     if (fd < 0) {
         errno = EBADF;
@@ -59,7 +61,7 @@ epoll_mplex_type::add (uint32_t const trigger, int const fd, std::size_t const h
 }
 
 int
-epoll_mplex_type::drop (uint32_t const events, std::size_t const id)
+mplex_epoll_type::drop (uint32_t const events, std::size_t const id)
 {
     if (range_check (id) < 0)
         return -1;
@@ -75,7 +77,7 @@ epoll_mplex_type::drop (uint32_t const events, std::size_t const id)
 }
 
 int
-epoll_mplex_type::mod (uint32_t const trigger, std::size_t id)
+mplex_epoll_type::mod (uint32_t const trigger, std::size_t id)
 {
     struct epoll_event ev;
     if (range_check (id) < 0)
@@ -117,7 +119,7 @@ epoll_mplex_type::mod (uint32_t const trigger, std::size_t id)
 }
 
 int
-epoll_mplex_type::del (std::size_t const id)
+mplex_epoll_type::del (std::size_t const id)
 {
     struct epoll_event ev;
     if (range_check (id) < 0)
@@ -140,7 +142,7 @@ epoll_mplex_type::del (std::size_t const id)
 }
 
 int
-epoll_mplex_type::wait (int msec)
+mplex_epoll_type::wait (int msec)
 {
     if (! handles.empty (READY))
         msec = 0;
@@ -163,3 +165,5 @@ epoll_mplex_type::wait (int msec)
     }
     return nevent;
 }
+
+}//namespace http

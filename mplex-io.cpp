@@ -2,7 +2,9 @@
 #include <cerrno>
 #include "server.hpp"
 
-io_mplex_type::io_mplex_type (std::size_t n)
+namespace http {
+
+mplex_io_type::mplex_io_type (std::size_t n)
     : max_events (n), handles (), timers ()
 {
     looptime_ = std::time (nullptr);
@@ -12,7 +14,7 @@ io_mplex_type::io_mplex_type (std::size_t n)
 }
 
 int
-io_mplex_type::add_timer (std::time_t const uptime, std::size_t const handler_id)
+mplex_io_type::add_timer (std::time_t const uptime, std::size_t const handler_id)
 {
     if (handles.empty (FREE)) {
         errno = ENOMEM;
@@ -34,7 +36,7 @@ io_mplex_type::add_timer (std::time_t const uptime, std::size_t const handler_id
 }
 
 int
-io_mplex_type::mod_timer (std::time_t const uptime, std::size_t const id)
+mplex_io_type::mod_timer (std::time_t const uptime, std::size_t const id)
 {
     if (range_check (id) < 0)
         return -1;
@@ -55,7 +57,7 @@ io_mplex_type::mod_timer (std::time_t const uptime, std::size_t const id)
 }
 
 int
-io_mplex_type::stop_timer (std::size_t const id)
+mplex_io_type::stop_timer (std::size_t const id)
 {
     if (range_check (id) < 0)
         return -1;
@@ -78,7 +80,7 @@ io_mplex_type::stop_timer (std::size_t const id)
 }
 
 void
-io_mplex_type::run_timer ()
+mplex_io_type::run_timer ()
 {
     looptime_ = std::time (nullptr);
     for (auto i = timers.begin (); i != timers.end () && i->first <= looptime_;) {
@@ -90,3 +92,5 @@ io_mplex_type::run_timer ()
         i = timers.erase (i);
     }
 }
+
+}//namespace http

@@ -21,12 +21,13 @@ This server depends on Linux specific systemcalls.
 Version
 ------
 
-0.0.1 alpha
+0.1.0 alpha
 
 Build
 -----
 
     $ make
+    $ make test
     $ ./http-server
 
 from other terminals

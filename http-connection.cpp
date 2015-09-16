@@ -12,8 +12,10 @@
 #include <netinet/tcp.h>
 #include "server.hpp"
 
+namespace http {
+
 int
-event_handler_type::on_accept (tcpserver_type& loop)
+connection_type::on_accept (tcpserver_type& loop)
 {
     logger_type& log = logger_type::getinstance ();
     std::string addr;
@@ -29,6 +31,8 @@ event_handler_type::on_accept (tcpserver_type& loop)
         std::time_t uptime = loop.looptime () + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
         clear ();
+        decoder_request.set_limit_nfield (LIMIT_REQUEST_FIELDS);
+        decoder_request.set_limit_nbyte (LIMIT_REQUEST_FIELD_SIZE);
         return loop.register_handler (id);
     }
     if (handle_id >= 0)
@@ -40,7 +44,7 @@ event_handler_type::on_accept (tcpserver_type& loop)
 }
 
 int
-event_handler_type::on_read (tcpserver_type& loop)
+connection_type::on_read (tcpserver_type& loop)
 {
     logger_type& log = logger_type::getinstance ();
     ssize_t n = iotransfer (loop);
@@ -65,7 +69,7 @@ event_handler_type::on_read (tcpserver_type& loop)
 }
 
 int
-event_handler_type::on_write (tcpserver_type& loop)
+connection_type::on_write (tcpserver_type& loop)
 {
     logger_type& log = logger_type::getinstance ();
     ssize_t n = iotransfer (loop);
@@ -90,13 +94,13 @@ event_handler_type::on_write (tcpserver_type& loop)
 }
 
 int
-event_handler_type::on_timer (tcpserver_type& loop)
+connection_type::on_timer (tcpserver_type& loop)
 {
     return loop.remove_handler (id);
 }
 
 void
-event_handler_type::on_close (tcpserver_type& loop)
+connection_type::on_close (tcpserver_type& loop)
 {
     int fd = loop.mplex.fd (handle_id);
     loop.mplex.del (handle_id);
@@ -105,15 +109,15 @@ event_handler_type::on_close (tcpserver_type& loop)
 }
 
 void
-event_handler_type::clear ()
+connection_type::clear ()
 {
     keepalive_requests = 0;
     rdpos = 0;
     rdsize = 0;
     request.clear ();
     response.clear ();
-    reqdecoder.clear ();
-    chunkdecoder.clear ();
+    decoder_request.clear ();
+    decoder_chunk.clear ();
     ioresult = 0;
     iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
 }
@@ -148,15 +152,21 @@ setsockopt_cork (int const sock, bool const flag)
 }
 
 ssize_t
-event_handler_type::iocontinue (uint32_t const mask, int const kontinuation)
+connection_type::iocontinue (uint32_t const mask, int const kontinuation)
 {
     iowait_mask = mask;
     kont = kontinuation;
     return ioresult;
 }
 
+static inline int
+ord (char c)
+{
+    return static_cast<uint8_t> (c);
+}
+
 ssize_t
-event_handler_type::iotransfer (tcpserver_type& loop)
+connection_type::iotransfer (tcpserver_type& loop)
 {
     int sock = loop.mplex.fd (handle_id);
     for (;;) {
@@ -170,18 +180,18 @@ event_handler_type::iotransfer (tcpserver_type& loop)
         }
         else if (KREQUEST_HEADER == kont) {
             while (rdpos < rdsize)
-                if (! reqdecoder.put (rdbuf[rdpos++], request))
+                if (! decoder_request.put (ord (rdbuf[rdpos++]), request))
                     break;
-            if (reqdecoder.partial ()) {
+            if (decoder_request.partial ()) {
                 return iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
             }
             prepare_request_body ();
         }
         else if (KREQUEST_CHUNKED == kont) {
             while (rdpos < rdsize)
-                if (! chunkdecoder.put (rdbuf[rdpos++], request.body))
+                if (! decoder_chunk.put (ord (rdbuf[rdpos++]), request.body))
                     break;
-            if (chunkdecoder.partial ()) {
+            if (decoder_chunk.partial ()) {
                 return iocontinue (READ_EVENT, KREQUEST_CHUNKED_READ);
             }
             finalize_request_chunked ();
@@ -197,11 +207,11 @@ event_handler_type::iotransfer (tcpserver_type& loop)
         }
         else if (KDISPATCH == kont) {
             if (request.uri == "/test") {
-                test_handler_type h;
+                handler_test_type h;
                 h.process (*this);
             }
             else {
-                file_handler_type h;
+                handler_file_type h;
                 h.process (*this);
             }
             kont = KRESPONSE;
@@ -314,12 +324,12 @@ event_handler_type::iotransfer (tcpserver_type& loop)
 }
 
 void
-event_handler_type::prepare_request_body ()
+connection_type::prepare_request_body ()
 {
-    if (reqdecoder.bad ()
+    if (decoder_request.bad ()
             || (request.http_version >= "HTTP/1.1"
                 && request.header.count ("host") == 0)) {
-        message_handler_type h;
+        handler_type h;
         h.bad_request (*this);
         kont = KRESPONSE;
     }
@@ -335,27 +345,28 @@ event_handler_type::prepare_request_body ()
 }
 
 void
-event_handler_type::prepare_request_chunked ()
+connection_type::prepare_request_chunked ()
 {
-    message_handler_type h;
+    handler_type h;
     kont = KRESPONSE;
-    token_list_type te;
-    te.decode_simple (request.header["transfer-encoding"], 1);
-    if (te.size () != 1 || ! te.list.back ().equal_token ("chunked"))
+    std::vector<simple_token_type> te;
+    if (! decode (te, request.header["transfer-encoding"], 1))
+        h.bad_request (*this);
+    if (te.size () != 1 || ! te.back ().equal_token ("chunked"))
         h.unsupported_media_type (*this);
     else
         kont = KREQUEST_CHUNKED;
 }
 
 void
-event_handler_type::finalize_request_chunked ()
+connection_type::finalize_request_chunked ()
 {
-    message_handler_type h;
+    handler_type h;
     kont = KRESPONSE;
-    if (chunkdecoder.bad ())
+    if (decoder_chunk.bad ())
         h.bad_request (*this);
     else {
-        ssize_t const n = chunkdecoder.content_length;
+        ssize_t const n = decoder_chunk.content_length;
         request.content_length = n;
         request.header["content-length"] = std::to_string (n);
         kont = KDISPATCH;
@@ -363,26 +374,27 @@ event_handler_type::finalize_request_chunked ()
 }
 
 void
-event_handler_type::prepare_request_length ()
+connection_type::prepare_request_length ()
 {
-    message_handler_type h;
+    handler_type h;
     kont = KRESPONSE;
-    ssize_t n = request.canonical_length ();
-    if (-400 == n)
+    content_length_type canonlength;
+    decode (canonlength, request.header["content-length"]);
+    if (400 == canonlength.status)
         h.bad_request (*this);
-    else if (-413 == n)
+    else if (413 == canonlength.status)
         h.request_entity_too_large (*this);
     else if (request.method != "POST" && request.method != "PUT")
         h.request_entity_too_large (*this);
     else {
-        request.header["content-length"] = std::to_string (n);
-        request.content_length = n;
+        request.header["content-length"] = std::to_string (canonlength.length);
+        request.content_length = canonlength.length;
         kont = KREQUEST_LENGTH;
     }
 }
 
 void
-event_handler_type::prepare_response ()
+connection_type::prepare_response ()
 {
     decide_transfer_encoding ();
     response.has_body = true;
@@ -402,20 +414,21 @@ event_handler_type::prepare_response ()
 }
 
 void
-event_handler_type::decide_transfer_encoding ()
+connection_type::decide_transfer_encoding ()
 {
     if (response.header.count ("transfer-encoding") > 0) {
-        token_list_type te;
-        te.decode_simple (response.header["transfer-encoding"], 1);
-        if (te.size () != 1 || ! te.list.back ().equal_token ("chunked"))
+        std::vector<simple_token_type> te;
+        if (! decode (te, response.header["transfer-encoding"], 1)
+                || te.size () != 1 || ! te.back ().equal_token ("chunked"))
             response.header.erase ("transfer-encoding");
     }
     if (response.header.count ("content-length") > 0) {
-        ssize_t n = response.canonical_length ();
-        if (n < 0)
+        content_length_type canonlength;
+        decode (canonlength, response.header.at ("content-length"));
+        if (canonlength.status != 200)
             response.header.erase ("content-length");
         else
-            response.header["content-length"] = std::to_string (n);
+            response.header["content-length"] = std::to_string (canonlength.length);
     }
     response.chunked = false;
     if (response.http_version < "HTTP/1.1") {
@@ -433,7 +446,7 @@ event_handler_type::decide_transfer_encoding ()
 }
 
 bool
-event_handler_type::prepare_response_body ()
+connection_type::prepare_response_body ()
 {
     if (! response.has_body)
         return false;
@@ -458,7 +471,7 @@ event_handler_type::prepare_response_body ()
 }
 
 bool
-event_handler_type::finalize_response ()
+connection_type::finalize_response ()
 {
     if (response.body_fd >= 0) {
         close (response.body_fd);
@@ -470,24 +483,29 @@ event_handler_type::finalize_response ()
     bool teardown = done_connection ();
     response.clear ();
     request.clear ();
-    reqdecoder.clear ();
+    decoder_request.clear ();
+    decoder_chunk.clear ();
     return teardown;
 }
 
 bool
-event_handler_type::done_connection ()
+connection_type::done_connection ()
 {
-    token_list_type rqconn;
-    token_list_type rsconn;
+    std::vector<simple_token_type> rqconn;
+    std::vector<simple_token_type> rsconn;
     if (MAX_KEEPALIVE_REQUESTS <= ++keepalive_requests)
         return true;
     if (request.header.count ("connection") > 0)
-        rqconn.decode_simple (request.header["connection"], 1);
+        decode (rqconn, request.header["connection"], 1);
     if (response.header.count ("connection") > 0)
-        rsconn.decode_simple (response.header["connection"], 1);
-    if (rqconn.find ("close") || rsconn.find ("close"))
+        decode (rsconn, response.header["connection"], 1);
+    if (index (rqconn, "close") < rqconn.size ())
+        return true;
+    if (index (rsconn, "close") < rsconn.size ())
         return true;
     if (response.http_version < "HTTP/1.1")
-        return ! rqconn.find ("keep-alive");
+        return index (rqconn, "keep-alive") == rqconn.size ();
     return false;
 }
+
+}//namespace http

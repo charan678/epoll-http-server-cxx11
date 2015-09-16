@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include "server.hpp"
 
+namespace http {
+
 struct location_type {
     std::vector<std::string> dirs;
     std::string name;
@@ -23,7 +25,7 @@ private:
 };
 
 bool
-file_handler_type::get (event_handler_type& r)
+handler_file_type::get (http::connection_type& r)
 {
     static const std::string httpdate ("%a, %d %b %Y %H:%M:%S GMT");
     location_type loc;
@@ -37,7 +39,7 @@ file_handler_type::get (event_handler_type& r)
     std::string etag = "\"" + std::to_string (st.st_ino) 
                       + "-" + std::to_string (st.st_mtime)
                       + "-" + std::to_string (st.st_size) + "\"";
-    request_condition_type precond (etag, st.st_mtime);
+    condition_type precond ({false, etag}, st.st_mtime);
     int code = precond.check (r.request.method, r.request.header);
     if (400 == code)
         return bad_request (r);
@@ -47,7 +49,7 @@ file_handler_type::get (event_handler_type& r)
     r.response.header["content-length"] = std::to_string (st.st_size);
     r.response.header["content-type"] = mime_type (loc.ext);
     r.response.header["etag"] = etag;
-    r.response.header["last-modified"] = to_string_time (httpdate, st.st_mtime);
+    r.response.header["last-modified"] = time_to_string (httpdate, st.st_mtime);
     if (304 == code)
         return not_modified (r);
     if (r.request.method == "HEAD")
@@ -60,7 +62,7 @@ file_handler_type::get (event_handler_type& r)
 }
 
 std::string
-file_handler_type::mime_type (std::string const& ext) const
+handler_file_type::mime_type (std::string const& ext) const
 {
     static const std::vector<std::string> mime {
         "html",  "text/html; charset=UTF-8",
@@ -141,3 +143,5 @@ location_type::catpath () const
         parent += x + "/";
     return parent + name;
 }
+
+}//namespace http

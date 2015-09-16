@@ -1,5 +1,7 @@
 #include <string>
-#include "server.hpp"
+#include "html-builder.hpp"
+
+namespace http {
 
 html_builder_type::html_builder_type ()
     : buffer ()
@@ -39,3 +41,5 @@ html_builder_type::string () const
 {
     return buffer;
 }
+
+}//namespace http
