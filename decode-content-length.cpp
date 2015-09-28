@@ -1,6 +1,7 @@
 #include <string>
 #include <cctype>
 #include "http.hpp"
+#include "decode-lookup-cls.hpp"
 
 namespace http {
 
@@ -9,14 +10,6 @@ namespace http {
 // S3: [,] S4 | [\t ] S3 | $ S5
 // S4: [0-9] S2 | [,] S4 | [\t ] S4 | $ S5
 // S5: MATCH
-
-static inline int
-lookup_cls (uint32_t const tbl[], uint32_t const octet)
-{
-    uint32_t const i = octet >> 3;
-    uint32_t const count = (7 - (octet & 7)) << 2;
-    return octet < 128 ? ((tbl[i] >> count) & 0x0f) : 0;
-}
 
 bool
 decode (content_length_type& field, std::string const& src)

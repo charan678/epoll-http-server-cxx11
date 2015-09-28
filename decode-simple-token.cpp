@@ -3,6 +3,7 @@
 #include <cctype>
 #include <algorithm>
 #include "http.hpp"
+#include "decode-lookup-cls.hpp"
 
 namespace http {
 
@@ -31,14 +32,6 @@ namespace http {
 //        | $      S5
 //
 //      S5: MATCH
-
-static inline int
-lookup_cls (uint32_t const tbl[], uint32_t const octet)
-{
-    uint32_t const i = octet >> 3;
-    uint32_t const count = (7 - (octet & 7)) << 2;
-    return octet < 128 ? ((tbl[i] >> count) & 0x0f) : 0;
-}
 
 bool
 decode (std::vector<simple_token_type>& fields, std::string const& src, int const lowerlimit)

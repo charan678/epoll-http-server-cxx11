@@ -1,16 +1,9 @@
 #include <string>
 #include <cctype>
 #include "http.hpp"
+#include "decode-lookup-cls.hpp"
 
 namespace http {
-
-static inline int
-lookup_cls (uint32_t const tbl[], uint32_t const octet)
-{
-    uint32_t const i = octet >> 3;
-    uint32_t const count = (7 - (octet & 7)) << 2;
-    return octet < 128 ? ((tbl[i] >> count) & 0x0f) : 0;
-}
 
 decoder_request_line_type::decoder_request_line_type ()
     : limit_nbyte (8190), next_state (1), nbyte (0)

@@ -39,25 +39,25 @@ http-connection.o : server.hpp http-connection.cpp
 http-condition.o : http.hpp http-condition.cpp
 	$(CXX) $(CXXFLAGS) -c http-condition.cpp
 
-decode-simple-token.o : http.hpp decode-simple-token.cpp
+decode-simple-token.o : http.hpp decode-lookup-cls.hpp decode-simple-token.cpp
 	$(CXX) $(CXXFLAGS) -c decode-simple-token.cpp
 
-decode-token.o : http.hpp decode-token.cpp
+decode-token.o : http.hpp decode-lookup-cls.hpp decode-token.cpp
 	$(CXX) $(CXXFLAGS) -c decode-token.cpp
 
-decode-content-length.o : http.hpp decode-content-length.cpp
+decode-content-length.o : http.hpp decode-lookup-cls.hpp decode-content-length.cpp
 	$(CXX) $(CXXFLAGS) -c decode-content-length.cpp
 
-decode-etag.o : http.hpp decode-etag.cpp
+decode-etag.o : http.hpp decode-lookup-cls.hpp decode-etag.cpp
 	$(CXX) $(CXXFLAGS) -c decode-etag.cpp
 
-decode-request-line.o : http.hpp decode-request-line.cpp
+decode-request-line.o : http.hpp decode-lookup-cls.hpp decode-request-line.cpp
 	$(CXX) $(CXXFLAGS) -c decode-request-line.cpp
 
-decode-request-header.o : http.hpp decode-request-header.cpp
+decode-request-header.o : http.hpp decode-lookup-cls.hpp decode-request-header.cpp
 	$(CXX) $(CXXFLAGS) -c decode-request-header.cpp
 
-decode-chunk.o : http.hpp decode-chunk.cpp
+decode-chunk.o : http.hpp decode-lookup-cls.hpp decode-chunk.cpp
 	$(CXX) $(CXXFLAGS) -c decode-chunk.cpp
 
 time_to_string.o : http.hpp time_to_string.cpp
