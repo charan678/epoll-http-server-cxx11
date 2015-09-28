@@ -8,103 +8,106 @@ namespace http {
 
 // RFC 7230 HTTP/1.1
 //
-//     fields-value: [,\s]* token (\s* ';' \s* parameter)*
+//      fields-value: [,\s]* token (\s* ';' \s* parameter)*
 //                   (\s* ',' (\s* token (\s* ';' \s* parameter)*)?)* \s*
-//     parameter: token \s* '=' \s* (token | '"' ('\\' qdesc | qdtext)* '"'
-//     token: tchar+
-//     tchar: [A-Za-z0-9!#$%&'*+\-.^_`|~]
-//     qdesc: [\t\x20-\x7e]
-//     qdtext: [\t \x21\x23-\x5b\x5d-\x7e]
+//      parameter: token \s* '=' \s* (token | '"' ('\\' qdesc | qdtext)* '"'
+//      token: tchar+
+//      tchar: [A-Za-z0-9!#$%&'*+\-.^_`|~]
+//      qdesc: qdtext | '\\' | '"'
+//      qdtext: [\t \x21\x23-\x5b\x5d-\x7e]
 //
 //      S1: tchar   S2  A1{ item.token.push_back (octet); }
-//        | ','     S1
+//        | [,]     S1
 //        | [\t ]   S1
 //
 //      S2: tchar   S2  A1{ item.token.push_back (octet); }
-//        | ';'     S4
-//        | ','    S12  A5{ fields.push_back (item); }
 //        | [\t ]   S3
-//        | $      S13  A5{ fields.push_back (item); }
+//        | [;]     S4
+//        | [,]     Sc  A5{ fields.push_back (item); }
+//        | $       Sd  A5{ fields.push_back (item); }
 //
-//      S3: ';'     S4
-//        | ','    S12  A5{ fields.push_back (item); }
-//        | [\t ]   S3
-//        | $      S13  A5{ fields.push_back (item); }
+//      S3: [\t ]   S3
+//        | [;]     S4
+//        | [,]     Sc  A5{ fields.push_back (item); }
+//        | $       Sd  A5{ fields.push_back (item); }
 //
 //      S4: tchar   S5  A2{ name.push_back (std::tolower (octet)); }
 //        | [\t ]   S4
 //
 //      S5: tchar   S5  A2{ name.push_back (std::tolower (octet)); }
-//        | '='     S7
 //        | [\t ]   S6
+//        | [=]     S7
 //
-//      S6: '='     S7
-//        | [\t ]   S6
+//      S6: [\t ]   S6
+//        | [=]     S7
 //
 //      S7: tchar   S8  A3{ value.push_back (octet); }
-//        | '"'    S10
-//        | [\t ]   S6
+//        | [\t ]   S7
+//        | ["]     Sa
 //
 //      S8: tchar   S8  A3{ value.push_back (octet); }
-//        | ';'     S4  A4{ item.parameter.push_back (name, value); }
-//        | ','    S12  A6{ A4 (); A5 (); }
-//        | [\t ]  S11  A4{ item.parameter.push_back (name, value); }
-//        | $      S13  A6{ A4 (); A5 (); }
+//        | [\t ]   Sb  A4{ item.parameter.push_back (name, value); }
+//        | [;]     S4  A4{ item.parameter.push_back (name, value); }
+//        | [,]     Sc  A6{ A4 (); A5 (); }
+//        | $       Sd  A6{ A4 (); A5 (); }
 //
-//      S9: qdesc  S10  A3{ value.push_back (octet); }
+//      S9: qdtext  Sa  A3{ value.push_back (octet); }
+//        | [\\]    Sa  A3{ value.push_back (octet); }
+//        | ["]     Sa  A3{ value.push_back (octet); }
 //
-//     S10: qdtext S10  A3{ value.push_back (octet); }
-//        | '\\'    S9
-//        | '"'    S11
+//      Sa: qdtext  Sa  A3{ value.push_back (octet); }
+//        | [\\]    S9
+//        | ["]     Sb  A4{ item.parameter.push_back (name, value); }
 //
-//     S11: ';'     S4
-//        | ','    S12  A5{ fields.push_back (item); }
-//        | [\t ]  S11
-//        | $      S13  A5{ fields.push_back (item); }
+//      Sb: [\t ]   Sb
+//        | [;]     S4
+//        | [,]     Sc  A5{ fields.push_back (item); }
+//        | $       Sd  A5{ fields.push_back (item); }
 //
-//     S12: tchar   S2  A1{ item.token.push_back (octet); }
-//        | ','    S12
-//        | [\t ]  S12
-//        | $      S13
+//      Sc: tchar   S2  A1{ item.token.push_back (octet); }
+//        | [\t ]   Sc
+//        | [,]     Sc
+//        | $       Sd
 //
-//     S13: MATCH
+//      Sd: MATCH
+
+static inline int
+lookup_cls (uint32_t const tbl[], uint32_t const octet)
+{
+    uint32_t const i = octet >> 3;
+    uint32_t const count = (7 - (octet & 7)) << 2;
+    return octet < 128 ? ((tbl[i] >> count) & 0x0f) : 0;
+}
 
 bool
 decode (std::vector<token_type>& fields, std::string const& src, int const lowerlimit)
 {
-    static const int SHIFT[14][17] = {
-    //      0  \d  \h  \T   .  \\   "   =   ;   ,   :  \t  \s  \r  \n   $
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0},
-        {0, 2,  2,  2,  2,  0,  0,  0,  0,  0,  1,  0,  1,  1,  0,  0,  0}, // S1
-        {0, 2,  2,  2,  2,  0,  0,  0,  0,  4, 12,  0,  3,  3,  0,  0, 13}, // S2
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  4, 12,  0,  3,  3,  0,  0, 13}, // S3
-        {0, 5,  5,  5,  5,  0,  0,  0,  0,  0,  0,  0,  5,  5,  0,  0,  0}, // S4
-        {0, 5,  5,  5,  5,  0,  0,  0,  7,  0,  0,  0,  6,  6,  0,  0,  0}, // S5
-        {0, 0,  0,  0,  0,  0,  0,  0,  7,  0,  0,  0,  6,  6,  0,  0,  0}, // S6
-        {0, 8,  8,  8,  8,  0,  0, 10,  0,  0,  0,  0,  7,  7,  0,  0,  0}, // S7
-        {0, 8,  8,  8,  8,  0,  0,  0,  0,  4, 12,  0, 11, 11,  0,  0, 13}, // S8
-        {0,10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,  0,  0,  0}, // S9
-        {0,10, 10, 10, 10, 10,  9, 11, 10, 10, 10, 10, 10, 10,  0,  0,  0}, // S10
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  4, 12,  0, 11, 11,  0,  0, 13}, // S11
-        {0, 2,  2,  2,  2,  0,  0,  0,  0,  0, 12,  0, 12, 12,  0,  0, 13}, // S12
-        {1, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S13
+    static const int SHIFT[14][10] = {
+    //     qdtext tchar [\t ] [;]   [=]   [,]   [\\]  ["]   $
+        {0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+        {0, 0x00, 0x12, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00}, // S1
+        {0, 0x00, 0x12, 0x03, 0x04, 0x00, 0x5c, 0x00, 0x00, 0x5d}, // S2
+        {0, 0x00, 0x00, 0x03, 0x04, 0x00, 0x5c, 0x00, 0x00, 0x5d}, // S3
+        {0, 0x00, 0x25, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // S4
+        {0, 0x00, 0x25, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00}, // S5
+        {0, 0x00, 0x00, 0x06, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00}, // S6
+        {0, 0x00, 0x38, 0x07, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x00}, // S7
+        {0, 0x00, 0x38, 0x4b, 0x44, 0x00, 0x6c, 0x00, 0x00, 0x6d}, // S8
+        {0, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x00}, // S9
+        {0, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x3a, 0x09, 0x4b, 0x00}, // Sa
+        {0, 0x00, 0x00, 0x0b, 0x04, 0x00, 0x5c, 0x00, 0x00, 0x5d}, // Sb
+        {0, 0x00, 0x12, 0x0c, 0x00, 0x00, 0x0c, 0x00, 0x00, 0x0d}, // Sc
+        {1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Sd
     };
-    static const int ACTION[14][17] = {
-    //      0  \d  \h  \T   .  \\   "   =   ;   ,   :  \t  \s  \r  \n   $
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0},
-        {0, 1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S1
-        {0, 1,  1,  1,  1,  0,  0,  0,  0,  0,  5,  0,  0,  0,  0,  0,  5}, // S2
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  5,  0,  0,  0,  0,  0,  5}, // S3
-        {0, 2,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S4
-        {0, 2,  2,  2,  2,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S5
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S6
-        {0, 3,  3,  3,  3,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S7
-        {0, 3,  3,  3,  3,  0,  0,  0,  0,  4,  6,  0,  4,  4,  0,  0,  6}, // S8
-        {0, 3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  0,  0,  0}, // S9
-        {0, 3,  3,  3,  3,  3,  0,  4,  3,  3,  3,  3,  3,  3,  0,  0,  0}, // S10
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  5,  0,  0,  0,  0,  0,  5}, // S11
-        {0, 1,  1,  1,  1,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S12
-        {0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}, // S13
+    static const uint32_t CCLASS[16] = {
+    //                 tn  r                          
+        0x00000000, 0x03000000, 0x00000000, 0x00000000,
+    //     !"#$%&'    ()*+,-./    01234567    89:;<=>?
+        0x32822222, 0x11226221, 0x22222222, 0x22141511,
+    //    @ABCDEFG    HIJKLMNO    PQRSTUVW    XYZ[\]^_
+        0x12222222, 0x22222222, 0x22222222, 0x22217122,
+    //    `abcdefg    hijklmno    pqrstuvw    xyz{|}~ 
+        0x22222222, 0x22222222, 0x22222222, 0x22212120,
     };
     std::vector<token_type> list;
     token_type item;
@@ -112,35 +115,36 @@ decode (std::vector<token_type>& fields, std::string const& src, int const lower
     std::string::const_iterator const e = src.cend ();
     std::string name;
     std::string value;
+    bool matched = false;
     int next_state = 1 == lowerlimit ? 1 : 12;
     for (; s <= e; ++s) {
-        int octet = s == e ? '\0' : static_cast<uint8_t> (*s);
-        int cls = s == e ? 16 : tocclass (octet);
+        uint32_t octet = s == e ? '\0' : static_cast<uint8_t> (*s);
+        int cls = s == e ? 9 : lookup_cls (CCLASS, octet);
         int prev_state = next_state;
-        next_state = SHIFT[prev_state][cls];
+        next_state = 0 == cls ? 0 : SHIFT[prev_state][cls] & 0x0f;
         if (! next_state)
             break;
-        switch (ACTION[prev_state][cls]) {
-        case 1:
+        switch (SHIFT[prev_state][cls] & 0xf0) {
+        case 0x10:
             item.token.push_back (octet);
             break;
-        case 2:
+        case 0x20:
             name.push_back (std::tolower (octet));
             break;
-        case 3:
+        case 0x30:
             value.push_back (octet);
             break;
-        case 4:
+        case 0x40:
             item.parameter.push_back (name);
             item.parameter.push_back (value);
             name.clear ();
             value.clear ();
             break;
-        case 5:
+        case 0x50:
             list.push_back (item);
             item.clear ();
             break;
-        case 6:
+        case 0x60:
             item.parameter.push_back (name);
             item.parameter.push_back (value);
             list.push_back (item);
@@ -149,11 +153,12 @@ decode (std::vector<token_type>& fields, std::string const& src, int const lower
             item.clear ();
             break;
         }
+        if (SHIFT[next_state][0] & 1)
+            matched = true;
     }
-    if (! (SHIFT[next_state][0] & 1))
-        return false;
-    std::swap (fields, list);
-    return true;
+    if (matched)
+        std::swap (fields, list);
+    return matched;
 }
 
 }//namespace http

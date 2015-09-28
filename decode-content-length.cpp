@@ -4,54 +4,79 @@
 
 namespace http {
 
+// S1: [0-9] S2 | [,] S1 | [\t ] S1
+// S2: [0-9] S2 | [,] S4 | [\t ] S3 | $ S5
+// S3: [,] S4 | [\t ] S3 | $ S5
+// S4: [0-9] S2 | [,] S4 | [\t ] S4 | $ S5
+// S5: MATCH
+
+static inline int
+lookup_cls (uint32_t const tbl[], uint32_t const octet)
+{
+    uint32_t const i = octet >> 3;
+    uint32_t const count = (7 - (octet & 7)) << 2;
+    return octet < 128 ? ((tbl[i] >> count) & 0x0f) : 0;
+}
+
 bool
 decode (content_length_type& field, std::string const& src)
 {
     static const int8_t SHIFT[6][5] = {
-    //         \s   ,  \d   $
-        {   0,  0,  0,  0,  0},
-        {   0,  1,  1,  2,  0}, // S1: \s S1 | ',' S1 | \d S2
-        {   0,  3,  4,  2,  5}, // S2: \s S3 | ',' S4 | \d S2 | $ S5
-        {   0,  3,  4,  0,  5}, // S3: \s S3 | ',' S4 |       | $ S5
-        {   0,  4,  4,  2,  5}, // S4: \s S4 | ',' S4 | \d S2 | $ S5
-        {   1,  0,  0,  0,  0}, // S5: MATCH
+    //      [0-9] [,]   [\t ] $
+        {0, 0x00, 0x00, 0x00, 0x00},
+        {0, 0x12, 0x01, 0x01, 0x00}, // S1
+        {0, 0x12, 0x24, 0x23, 0x25}, // S2
+        {0, 0x00, 0x04, 0x03, 0x05}, // S3
+        {0, 0x12, 0x04, 0x04, 0x05}, // S4
+        {1, 0x00, 0x00, 0x00, 0x00}, // S5
+    };
+    static const uint32_t CCLASS[16] = {
+    //                 tn  r                          
+        0x00000000, 0x03000000, 0x00000000, 0x00000000,
+    //     !"#$%&'    ()*+,-./    01234567    89:;<=>?
+        0x30000000, 0x00002000, 0x11111111, 0x11000000,
+    //    @ABCDEFG    HIJKLMNO    PQRSTUVW    XYZ[\]^_
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    //    `abcdefg    hijklmno    pqrstuvw    xyz{|}~ 
+        0x00000000, 0x00000000, 0x00000000, 0x00000000,
     };
     std::string::const_iterator s = src.cbegin ();
     std::string::const_iterator const e = src.cend ();
     ssize_t length = -1;
     ssize_t value = 0;
-    int next_state = 1;
     field.status = 400;
     field.length = 0;
-    for (; s <= e; ++s) {
-        int c = s == e ? '\0' : *s;
-        int cls = s == e ? 4 : '\t' == c ? 1 : ' ' == c ? 1
-                : ',' == c ? 2
-                : std::isdigit (c) ? 3 : 0;
+    bool matched = false;
+    for (int next_state = 1; s <= e; ++s) {
+        uint32_t octet = s == e ? '\0' : static_cast<uint8_t> (*s);
+        int cls = s == e ? 4 : lookup_cls (CCLASS, octet);
         int prev_state = next_state;
-        next_state = cls == 0 ? 0 : SHIFT[prev_state][cls];
+        next_state = ! cls ? 0 : SHIFT[prev_state][cls] & 0x0f;
         if (! next_state)
-            return false;
-        if (3 == cls) {
+            break;
+        switch (SHIFT[prev_state][cls] & 0xf0) {
+        case 0x10:
             // 214748364L * 10 + 7 == 0x7fffffffL
-            if (value > 214748364L || (value == 214748364L && c > '7')) {
+            if (value > 214748364L || (value == 214748364L && octet > '7')) {
                 field.status = 413;
                 return false;
             }
-            value = value * 10 + c - '0';
-        }
-        else if (2 == prev_state) {
+            value = value * 10 + octet - '0';
+            break;
+        case 0x20:
             if (length >= 0 && length != value)
                 return false;
             length = value;
             value = 0;
+            break;
+        }
+        if (1 & SHIFT[next_state][0]) {
+            field.status = 200;
+            field.length = length;
+            matched = true;
         }
     }
-    if (! (1 & SHIFT[next_state][0]))
-        return false;
-    field.status = 200;
-    field.length = length;
-    return true;
+    return matched;
 }
 
 }//namespace http

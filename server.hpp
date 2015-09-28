@@ -161,9 +161,11 @@ class tcpserver_type;
 class connection_type {
 public:
     enum {
+        KREQUEST_LINE_READ,
         KREQUEST_HEADER_READ,
         KREQUEST_CHUNKED_READ,
         KREQUEST_LENGTH_READ,
+        KREQUEST_LINE,
         KREQUEST_HEADER,
         KREQUEST_CHUNKED,
         KREQUEST_LENGTH,
@@ -192,7 +194,8 @@ public:
           response (), request (),
           kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
-          decoder_request (), decoder_chunk () {}
+          decoder_request_line (), decoder_request_header (),
+          decoder_chunk () {}
     ssize_t iotransfer (tcpserver_type& loop);
     int on_accept (tcpserver_type& loop);
     int on_read (tcpserver_type& loop);
@@ -210,7 +213,8 @@ private:
     ssize_t wrpos;
     ssize_t wrpos1;
     ssize_t wrsize;
-    decoder_request_type decoder_request;
+    decoder_request_line_type decoder_request_line;
+    decoder_request_header_type decoder_request_header;
     decoder_chunk_type decoder_chunk;
     uint32_t iowait_mask;
     ssize_t ioresult;

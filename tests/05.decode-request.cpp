@@ -12,11 +12,19 @@ test_1 (test::simple& ts)
         "\r\n"
         ;
     http::request_type req;
-    http::decoder_request_type decoder;
-    for (int c : input1)
-        if (! decoder.put (c, req))
+    http::decoder_request_line_type decoder_line;
+    http::decoder_request_header_type decoder_header;
+    for (int c : input1) {
+        if (! decoder_line.good ()) {
+            decoder_line.put (c, req);
+            if (decoder_line.bad ())
+                break;
+        }
+        else if (! decoder_header.put (c, req))
             break;
-    ts.ok (decoder.good (), "input1 decoder good.");
+    }
+    ts.ok (decoder_line.good (), "input1 decoder_line good.");
+    ts.ok (decoder_header.good (), "input1 decoder_header good.");
     ts.ok (req.method == "GET", "method GET");
     ts.ok (req.uri == "/example.html", "target-form /example.html");
     ts.ok (req.http_version == "HTTP/1.1", "version HTTP/1.1");
@@ -32,11 +40,19 @@ test_1 (test::simple& ts)
         "\r\n"
         ;
     req.clear ();
-    decoder.clear ();
-    for (int c : input2)
-        if (! decoder.put (c, req))
+    decoder_line.clear ();
+    decoder_header.clear ();
+    for (int c : input2) {
+        if (! decoder_line.good ()) {
+            decoder_line.put (c, req);
+            if (decoder_line.bad ())
+                break;
+        }
+        else if (! decoder_header.put (c, req))
             break;
-    ts.ok (decoder.good (), "input2 decoder good.");
+    }
+    ts.ok (decoder_line.good (), "input2 decoder_line good.");
+    ts.ok (decoder_header.good (), "input2 decoder_header good.");
     ts.ok (req.method == "OPTION", "method OPTION");
     ts.ok (req.uri == "*", "target-form *");
     ts.ok (req.http_version == "HTTP/1.0", "version HTTP/1.0");
@@ -46,7 +62,7 @@ test_1 (test::simple& ts)
 int
 main ()
 {
-    test::simple ts (15);
+    test::simple ts (17);
     test_1 (ts);
     return ts.done_testing ();
 }

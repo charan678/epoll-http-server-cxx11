@@ -115,21 +115,34 @@ std::size_t index (std::vector<T>& fields, std::string const& name)
     return fields.size ();
 }
 
-// 1:'0', 2:[1-9], 3:[A-Fa-f], 4: [G-Zg-z!#$%&'*+\-.^_`|~], 5:ANY
-// 6:'\\', 7:'"', 8:'=', 9:';', 10:',', 11:':', 12:HTAB, 13:SP, 14:CR, 15:LF
-int tocclass (int c);
-
 bool decode (std::vector<simple_token_type>& fields, std::string const& src, int const lowerlimit);
 bool decode (std::vector<token_type>& fields, std::string const& src, int const lowerlimit);
 bool decode (content_length_type& field, std::string const& src);
 bool decode (std::vector<etag_type>& fields, std::string const& src);
 
-class decoder_request_type {
+class decoder_request_line_type {
 public:
-    decoder_request_type ();
+    decoder_request_line_type ();
+    void set_limit_nbyte (std::size_t const x) { limit_nbyte = x; }
+    bool put (uint32_t const octet, request_type& req);
+    void clear ();
+    bool good () const;
+    bool bad () const;
+    bool partial () const;
+
+private:
+    std::size_t limit_nbyte;
+    int next_state;
+    std::size_t nbyte;
+    bool failure () { next_state = 0; return false; }
+};
+
+class decoder_request_header_type {
+public:
+    decoder_request_header_type ();
     void set_limit_nfield (std::size_t const x) { limit_nfield = x; }
     void set_limit_nbyte (std::size_t const x) { limit_nbyte = x; }
-    bool put (int c, request_type& req);
+    bool put (uint32_t const octet, request_type& req);
     void clear ();
     bool good () const;
     bool bad () const;
@@ -144,6 +157,7 @@ private:
     std::size_t nbyte;
     std::size_t limit_nfield;
     std::size_t limit_nbyte;
+    bool failure () { next_state = 0; return false; }
 };
 
 class decoder_chunk_type {

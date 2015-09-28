@@ -3,12 +3,12 @@ OBJECTS=http-response.o \
 	http-request.o \
 	http-connection.o \
 	http-condition.o \
-	decode-tocclass.o \
 	decode-simple-token.o \
 	decode-token.o \
 	decode-content-length.o \
 	decode-etag.o \
-	decode-request.o \
+	decode-request-line.o \
+	decode-request-header.o \
 	decode-chunk.o \
 	time_to_string.o \
 	time_decode.o \
@@ -39,9 +39,6 @@ http-connection.o : server.hpp http-connection.cpp
 http-condition.o : http.hpp http-condition.cpp
 	$(CXX) $(CXXFLAGS) -c http-condition.cpp
 
-decode-tocclass.o : http.hpp decode-tocclass.cpp
-	$(CXX) $(CXXFLAGS) -c decode-tocclass.cpp
-
 decode-simple-token.o : http.hpp decode-simple-token.cpp
 	$(CXX) $(CXXFLAGS) -c decode-simple-token.cpp
 
@@ -54,8 +51,11 @@ decode-content-length.o : http.hpp decode-content-length.cpp
 decode-etag.o : http.hpp decode-etag.cpp
 	$(CXX) $(CXXFLAGS) -c decode-etag.cpp
 
-decode-request.o : http.hpp decode-request.cpp
-	$(CXX) $(CXXFLAGS) -c decode-request.cpp
+decode-request-line.o : http.hpp decode-request-line.cpp
+	$(CXX) $(CXXFLAGS) -c decode-request-line.cpp
+
+decode-request-header.o : http.hpp decode-request-header.cpp
+	$(CXX) $(CXXFLAGS) -c decode-request-header.cpp
 
 decode-chunk.o : http.hpp decode-chunk.cpp
 	$(CXX) $(CXXFLAGS) -c decode-chunk.cpp
@@ -94,23 +94,23 @@ tcpserver.o : server.hpp tcpserver.cpp
 
 TEST02=tests/02.decode-simple-token.t
 TEST02SPEC=tests/02.decode-simple-token.cpp
-TEST02OBJ=decode-tocclass.o decode-simple-token.o
+TEST02OBJ=decode-simple-token.o
 
 TEST03=tests/03.decode-token.t
 TEST03SPEC=tests/03.decode-token.cpp
-TEST03OBJ=decode-tocclass.o decode-token.o
+TEST03OBJ=decode-token.o
 
 TEST04=tests/04.decode-content-length.t
 TEST04SPEC=tests/04.decode-content-length.cpp
-TEST04OBJ=decode-tocclass.o decode-content-length.o
+TEST04OBJ=decode-content-length.o
 
 TEST05=tests/05.decode-request.t
 TEST05SPEC=tests/05.decode-request.cpp
-TEST05OBJ=decode-tocclass.o http-request.o decode-request.o
+TEST05OBJ=http-request.o decode-request-line.o decode-request-header.o
 
 TEST06=tests/06.decode-chunk.t
 TEST06SPEC=tests/06.decode-chunk.cpp
-TEST06OBJ=decode-tocclass.o decode-chunk.o
+TEST06OBJ=decode-chunk.o
 
 TEST07=tests/07.decode-etag.t
 TEST07SPEC=tests/07.decode-etag.cpp

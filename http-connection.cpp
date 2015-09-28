@@ -31,8 +31,9 @@ connection_type::on_accept (tcpserver_type& loop)
         std::time_t uptime = loop.looptime () + loop.timeout ();
         loop.mplex.mod_timer (uptime, handle_id);
         clear ();
-        decoder_request.set_limit_nfield (LIMIT_REQUEST_FIELDS);
-        decoder_request.set_limit_nbyte (LIMIT_REQUEST_FIELD_SIZE);
+        decoder_request_line.set_limit_nbyte (LIMIT_REQUEST_FIELD_SIZE);
+        decoder_request_header.set_limit_nfield (LIMIT_REQUEST_FIELDS);
+        decoder_request_header.set_limit_nbyte (LIMIT_REQUEST_FIELD_SIZE);
         return loop.register_handler (id);
     }
     if (handle_id >= 0)
@@ -116,10 +117,11 @@ connection_type::clear ()
     rdsize = 0;
     request.clear ();
     response.clear ();
-    decoder_request.clear ();
+    decoder_request_line.clear ();
+    decoder_request_header.clear ();
     decoder_chunk.clear ();
     ioresult = 0;
-    iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
+    iocontinue (READ_EVENT, KREQUEST_LINE_READ);
 }
 
 static void
@@ -176,13 +178,22 @@ connection_type::iotransfer (tcpserver_type& loop)
                 break;
             rdpos = 0;
             rdsize = ioresult;
-            kont += KREQUEST_HEADER - KREQUEST_HEADER_READ;
+            kont += KREQUEST_LINE - KREQUEST_LINE_READ;
+        }
+        else if (KREQUEST_LINE == kont) {
+            while (rdpos < rdsize)
+                if (! decoder_request_line.put (ord (rdbuf[rdpos++]), request))
+                    break;
+            if (decoder_request_line.partial ()) {
+                return iocontinue (READ_EVENT, KREQUEST_LINE_READ);
+            }
+            kont = KREQUEST_HEADER;
         }
         else if (KREQUEST_HEADER == kont) {
             while (rdpos < rdsize)
-                if (! decoder_request.put (ord (rdbuf[rdpos++]), request))
+                if (! decoder_request_header.put (ord (rdbuf[rdpos++]), request))
                     break;
-            if (decoder_request.partial ()) {
+            if (decoder_request_header.partial ()) {
                 return iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
             }
             prepare_request_body ();
@@ -310,7 +321,7 @@ connection_type::iotransfer (tcpserver_type& loop)
                 shutdown (sock, SHUT_WR);
                 return iocontinue (READ_EVENT, KTEARDOWN);
             }
-            kont = KREQUEST_HEADER;
+            kont = KREQUEST_LINE;
         }
         else if (KTEARDOWN == kont) {
             ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
@@ -326,7 +337,7 @@ connection_type::iotransfer (tcpserver_type& loop)
 void
 connection_type::prepare_request_body ()
 {
-    if (decoder_request.bad ()
+    if (decoder_request_line.bad () || decoder_request_header.bad ()
             || (request.http_version >= "HTTP/1.1"
                 && request.header.count ("host") == 0)) {
         handler_type h;
@@ -483,7 +494,8 @@ connection_type::finalize_response ()
     bool teardown = done_connection ();
     response.clear ();
     request.clear ();
-    decoder_request.clear ();
+    decoder_request_line.clear ();
+    decoder_request_header.clear ();
     decoder_chunk.clear ();
     return teardown;
 }
