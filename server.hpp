@@ -205,8 +205,9 @@ private:
         KRESPONSE_END,
         KTEARDOWN,
     };
+    typedef int kont_type;
     bool kont_ready;
-    int kont;
+    kont_type kont;
     std::string rdbuf;
     std::string wrbuf;
     ssize_t rdpos;
@@ -225,7 +226,10 @@ private:
     void kont_request_header (tcpserver_type& loop);
     void kont_request_chunked (tcpserver_type& loop);
     void kont_request_length (tcpserver_type& loop);
-    void kont_request_read (tcpserver_type& loop);
+    void kont_request_line_read (tcpserver_type& loop);
+    void kont_request_header_read (tcpserver_type& loop);
+    void kont_request_chunked_read (tcpserver_type& loop);
+    void kont_request_length_read (tcpserver_type& loop);
     void kont_dispatch (tcpserver_type& loop);
     void kont_response (tcpserver_type& loop);
     void kont_response_header (tcpserver_type& loop);
@@ -238,13 +242,14 @@ private:
     void kont_teardown (tcpserver_type& loop);
 
     void ioready ();
-    void iocontinue (uint32_t const mask, int const kontinuation);
-    void iocontinue (int const kontinuation);
+    void iocontinue (uint32_t const mask, kont_type const kontinuation);
+    void iocontinue (kont_type const kontinuation);
     void iostop ();
     void prepare_request_body ();
     void prepare_request_chunked ();
     void finalize_request_chunked ();
     void prepare_request_length ();
+    void read_with_kontinuation (tcpserver_type& loop, kont_type kontinuation);
     void prepare_response ();
     void decide_transfer_encoding ();
     void prepare_response_body ();

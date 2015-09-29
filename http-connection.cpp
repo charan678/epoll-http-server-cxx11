@@ -160,7 +160,7 @@ connection_type::ioready ()
 }
 
 void
-connection_type::iocontinue (uint32_t const mask, int const kontinuation)
+connection_type::iocontinue (uint32_t const mask, kont_type const kontinuation)
 {
     iowait_mask = mask;
     kont = kontinuation;
@@ -168,7 +168,7 @@ connection_type::iocontinue (uint32_t const mask, int const kontinuation)
 }
 
 void
-connection_type::iocontinue (int const kontinuation)
+connection_type::iocontinue (kont_type const kontinuation)
 {
     kont = kontinuation;
 }
@@ -195,10 +195,10 @@ connection_type::iotransfer (tcpserver_type& loop)
         case KREQUEST_HEADER:        kont_request_header (loop);        break;
         case KREQUEST_CHUNKED:       kont_request_chunked (loop);       break;
         case KREQUEST_LENGTH:        kont_request_length (loop);        break;
-        case KREQUEST_LINE_READ:     kont_request_read (loop);          break;
-        case KREQUEST_HEADER_READ:   kont_request_read (loop);          break;
-        case KREQUEST_CHUNKED_READ:  kont_request_read (loop);          break;
-        case KREQUEST_LENGTH_READ:   kont_request_read (loop);          break;
+        case KREQUEST_LINE_READ:     kont_request_line_read (loop);     break;
+        case KREQUEST_HEADER_READ:   kont_request_header_read (loop);   break;
+        case KREQUEST_CHUNKED_READ:  kont_request_chunked_read (loop);  break;
+        case KREQUEST_LENGTH_READ:   kont_request_length_read (loop);   break;
         case KDISPATCH:              kont_dispatch (loop);              break;
         case KRESPONSE:              kont_response (loop);              break;
         case KRESPONSE_HEADER:       kont_response_header (loop);       break;
@@ -345,7 +345,31 @@ connection_type::kont_request_length (tcpserver_type& loop)
 }
 
 void
-connection_type::kont_request_read (tcpserver_type& loop)
+connection_type::kont_request_line_read (tcpserver_type& loop)
+{
+    read_with_kontinuation (loop, KREQUEST_LINE);
+}
+
+void
+connection_type::kont_request_header_read (tcpserver_type& loop)
+{
+    read_with_kontinuation (loop, KREQUEST_HEADER);
+}
+
+void
+connection_type::kont_request_chunked_read (tcpserver_type& loop)
+{
+    read_with_kontinuation (loop, KREQUEST_CHUNKED);
+}
+
+void
+connection_type::kont_request_length_read (tcpserver_type& loop)
+{
+    read_with_kontinuation (loop, KREQUEST_LENGTH);
+}
+
+void
+connection_type::read_with_kontinuation (tcpserver_type& loop, kont_type kontinuation)
 {
     int sock = loop.mplex.fd (handle_id);
     ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
@@ -353,7 +377,7 @@ connection_type::kont_request_read (tcpserver_type& loop)
         return iostop ();
     rdpos = 0;
     rdsize = ioresult;
-    iocontinue (kont + KREQUEST_LINE - KREQUEST_LINE_READ);
+    iocontinue (kontinuation);
 }
 
 void
