@@ -103,6 +103,7 @@ connection_type::on_timer (tcpserver_type& loop)
 void
 connection_type::on_close (tcpserver_type& loop)
 {
+    kont = nullptr;
     int fd = loop.mplex.fd (handle_id);
     loop.mplex.del (handle_id);
     if (fd >= 0)
@@ -121,7 +122,7 @@ connection_type::clear ()
     decoder_request_header.clear ();
     decoder_chunk.clear ();
     ioresult = 0;
-    iocontinue (READ_EVENT, KREQUEST_LINE_READ);
+    iocontinue (READ_EVENT, &connection_type::kont_request_line_read);
 }
 
 static void
@@ -189,28 +190,8 @@ ssize_t
 connection_type::iotransfer (tcpserver_type& loop)
 {
     ioready ();
-    while (kont_ready) {
-        switch (kont) {
-        case KREQUEST_LINE:          kont_request_line (loop);          break;
-        case KREQUEST_HEADER:        kont_request_header (loop);        break;
-        case KREQUEST_CHUNKED:       kont_request_chunked (loop);       break;
-        case KREQUEST_LENGTH:        kont_request_length (loop);        break;
-        case KREQUEST_LINE_READ:     kont_request_line_read (loop);     break;
-        case KREQUEST_HEADER_READ:   kont_request_header_read (loop);   break;
-        case KREQUEST_CHUNKED_READ:  kont_request_chunked_read (loop);  break;
-        case KREQUEST_LENGTH_READ:   kont_request_length_read (loop);   break;
-        case KDISPATCH:              kont_dispatch (loop);              break;
-        case KRESPONSE:              kont_response (loop);              break;
-        case KRESPONSE_HEADER:       kont_response_header (loop);       break;
-        case KRESPONSE_CHUNK_HEADER: kont_response_chunk_header (loop); break;
-        case KRESPONSE_CHUNK_BODY:   kont_response_chunk_body (loop);   break;
-        case KRESPONSE_CHUNK_CRLF:   kont_response_chunk_crlf (loop);   break;
-        case KRESPONSE_FILE_LENGTH:  kont_response_file_length (loop);  break;
-        case KRESPONSE_BODY_LENGTH:  kont_response_body_length (loop);  break;
-        case KRESPONSE_END:          kont_response_end (loop);          break;
-        case KTEARDOWN:              kont_teardown (loop);              break;
-        }
-    }
+    while (kont_ready && kont)
+        (this->*kont) (loop);
     return ioresult;
 }
 
@@ -221,9 +202,9 @@ connection_type::kont_request_line (tcpserver_type& loop)
         if (! decoder_request_line.put (ord (rdbuf[rdpos++]), request))
             break;
     if (decoder_request_line.partial ())
-        iocontinue (READ_EVENT, KREQUEST_LINE_READ);
+        iocontinue (READ_EVENT, &connection_type::kont_request_line_read);
     else
-        iocontinue (KREQUEST_HEADER);
+        iocontinue (&connection_type::kont_request_header);
 }
 
 void
@@ -233,7 +214,7 @@ connection_type::kont_request_header (tcpserver_type& loop)
         if (! decoder_request_header.put (ord (rdbuf[rdpos++]), request))
             break;
     if (decoder_request_header.partial ())
-        iocontinue (READ_EVENT, KREQUEST_HEADER_READ);
+        iocontinue (READ_EVENT, &connection_type::kont_request_header_read);
     else
         prepare_request_body ();
 }
@@ -246,7 +227,7 @@ connection_type::prepare_request_body ()
                 && request.header.count ("host") == 0)) {
         handler_type h;
         h.bad_request (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else {
         response.http_version = request.http_version;
@@ -255,7 +236,7 @@ connection_type::prepare_request_body ()
         else if (request.header.count ("content-length") > 0)
             prepare_request_length ();
         else
-            iocontinue (KDISPATCH);
+            iocontinue (&connection_type::kont_dispatch);
     }
 }
 
@@ -266,14 +247,14 @@ connection_type::prepare_request_chunked ()
     std::vector<simple_token_type> te;
     if (! decode (te, request.header["transfer-encoding"], 1)) {
         h.bad_request (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else if (te.size () != 1 || ! te.back ().equal_token ("chunked")) {
         h.unsupported_media_type (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else {
-        iocontinue (KREQUEST_CHUNKED);
+        iocontinue (&connection_type::kont_request_chunked);
     }
 }
 
@@ -284,7 +265,7 @@ connection_type::kont_request_chunked (tcpserver_type& loop)
         if (! decoder_chunk.put (ord (rdbuf[rdpos++]), request.body))
             break;
     if (decoder_chunk.partial ())
-        iocontinue (READ_EVENT, KREQUEST_CHUNKED_READ);
+        iocontinue (READ_EVENT, &connection_type::kont_request_chunked_read);
     else
         finalize_request_chunked ();
 }
@@ -295,13 +276,13 @@ connection_type::finalize_request_chunked ()
     if (decoder_chunk.bad ()) {
         handler_type h;
         h.bad_request (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else {
         ssize_t const n = decoder_chunk.content_length;
         request.content_length = n;
         request.header["content-length"] = std::to_string (n);
-        iocontinue (KDISPATCH);
+        iocontinue (&connection_type::kont_dispatch);
     }
 }
 
@@ -313,22 +294,22 @@ connection_type::prepare_request_length ()
     if (400 == canonlength.status) {
         handler_type h;
         h.bad_request (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else if (413 == canonlength.status) {
         handler_type h;
         h.request_entity_too_large (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else if (request.method != "POST" && request.method != "PUT") {
         handler_type h;
         h.request_entity_too_large (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else {
         request.header["content-length"] = std::to_string (canonlength.length);
         request.content_length = canonlength.length;
-        iocontinue (KREQUEST_LENGTH);
+        iocontinue (&connection_type::kont_request_length);
     }
 }
 
@@ -339,33 +320,33 @@ connection_type::kont_request_length (tcpserver_type& loop)
     request.body.append (rdbuf, rdpos, n);
     rdpos += n;
     if (request.body.size () < request.content_length)
-        iocontinue (READ_EVENT, KREQUEST_LENGTH_READ);
+        iocontinue (READ_EVENT, &connection_type::kont_request_length_read);
     else
-        iocontinue (KDISPATCH);
+        iocontinue (&connection_type::kont_dispatch);
 }
 
 void
 connection_type::kont_request_line_read (tcpserver_type& loop)
 {
-    read_with_kontinuation (loop, KREQUEST_LINE);
+    read_with_kontinuation (loop, &connection_type::kont_request_line);
 }
 
 void
 connection_type::kont_request_header_read (tcpserver_type& loop)
 {
-    read_with_kontinuation (loop, KREQUEST_HEADER);
+    read_with_kontinuation (loop, &connection_type::kont_request_header);
 }
 
 void
 connection_type::kont_request_chunked_read (tcpserver_type& loop)
 {
-    read_with_kontinuation (loop, KREQUEST_CHUNKED);
+    read_with_kontinuation (loop, &connection_type::kont_request_chunked);
 }
 
 void
 connection_type::kont_request_length_read (tcpserver_type& loop)
 {
-    read_with_kontinuation (loop, KREQUEST_LENGTH);
+    read_with_kontinuation (loop, &connection_type::kont_request_length);
 }
 
 void
@@ -386,12 +367,12 @@ connection_type::kont_dispatch (tcpserver_type& loop)
     if (request.uri == "/test") {
         handler_test_type h;
         h.process (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
     else {
         handler_file_type h;
         h.process (*this);
-        iocontinue (KRESPONSE);
+        iocontinue (&connection_type::kont_response);
     }
 }
 
@@ -399,7 +380,7 @@ void
 connection_type::kont_response (tcpserver_type& loop)
 {
     prepare_response ();
-    iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
+    iocontinue (WRITE_EVENT, &connection_type::kont_response_header);
 }
 
 void
@@ -463,9 +444,9 @@ connection_type::kont_response_header (tcpserver_type& loop)
         return iostop ();
     wrpos += ioresult;
     if (wrpos < wrsize)
-        iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_header);
     else if (! response.has_body)
-        iocontinue (KRESPONSE_END);
+        iocontinue (&connection_type::kont_response_end);
     else
         prepare_response_body ();
 }
@@ -481,14 +462,14 @@ connection_type::prepare_response_body ()
             response.content_length - wrpos, BUFFER_SIZE - 16);
         wrbuf = to_xdigits (response.chunk_size) + "\r\n";
         wrpos1 = 0;
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_header);
     }
     else if (response.body_fd >= 0) {
-        iocontinue (WRITE_EVENT, KRESPONSE_FILE_LENGTH);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_file_length);
     }
     else {
         wrsize = response.body.size ();
-        iocontinue (WRITE_EVENT, KRESPONSE_BODY_LENGTH);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_body_length);
     }
 }
 
@@ -502,15 +483,15 @@ connection_type::kont_response_chunk_header (tcpserver_type& loop)
         return iostop ();
     wrpos1 += ioresult;
     if (wrpos1 < wrbuf.size ())
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_header);
     else if (response.chunk_size > 0) {
         wrsize = wrpos + response.chunk_size;
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_body);
     }
     else {
         wrbuf = "\r\n";
         wrpos1 = 0;
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_crlf);
     }
 }
 
@@ -526,11 +507,11 @@ connection_type::kont_response_chunk_body (tcpserver_type& loop)
         return iostop ();
     wrpos += ioresult;
     if (wrpos < wrsize)
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_BODY);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_body);
     else {
         wrbuf = "\r\n";
         wrpos1 = 0;
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_crlf);
     }
 }
 
@@ -543,10 +524,10 @@ connection_type::kont_response_chunk_crlf (tcpserver_type& loop)
         return iostop ();
     wrpos1 += ioresult;
     if (wrpos1 < wrbuf.size ())
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_crlf);
     else if (response.chunk_size == 0) {
         setsockopt_cork (sock, false);
-        iocontinue (KRESPONSE_END);
+        iocontinue (&connection_type::kont_response_end);
     }
     else {
         setsockopt_cork (sock, false);
@@ -554,7 +535,7 @@ connection_type::kont_response_chunk_crlf (tcpserver_type& loop)
             response.content_length - wrpos, BUFFER_SIZE - 16);
         wrbuf = to_xdigits (response.chunk_size) + "\r\n";
         wrpos1 = 0;
-        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_chunk_header);
     }
 }
 
@@ -567,11 +548,11 @@ connection_type::kont_response_file_length (tcpserver_type& loop)
         iostop ();
     else if (ioresult > 0) {
         wrpos += ioresult;
-        iocontinue (WRITE_EVENT, KRESPONSE_FILE_LENGTH);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_file_length);
     }
     else {
         ioresult = BUFFER_SIZE;
-        iocontinue (KRESPONSE_END);
+        iocontinue (&connection_type::kont_response_end);
     }
 }
 
@@ -584,9 +565,9 @@ connection_type::kont_response_body_length (tcpserver_type& loop)
         return iostop ();
     wrpos += ioresult;
     if (wrpos < wrsize)
-        iocontinue (WRITE_EVENT, KRESPONSE_BODY_LENGTH);
+        iocontinue (WRITE_EVENT, &connection_type::kont_response_body_length);
     else
-        iocontinue (KRESPONSE_END);
+        iocontinue (&connection_type::kont_response_end);
 }
 
 void
@@ -594,10 +575,10 @@ connection_type::kont_response_end (tcpserver_type& loop)
 {
     int sock = loop.mplex.fd (handle_id);
     if (! finalize_response ())
-        iocontinue (KREQUEST_LINE);
+        iocontinue (&connection_type::kont_request_line);
     else {
         shutdown (sock, SHUT_WR);
-        iocontinue (READ_EVENT, KTEARDOWN);
+        iocontinue (READ_EVENT, &connection_type::kont_teardown);
     }
 }
 
@@ -646,7 +627,7 @@ connection_type::kont_teardown (tcpserver_type& loop)
     int sock = loop.mplex.fd (handle_id);
     ioresult = read (sock, &rdbuf[0], BUFFER_SIZE);
     if (ioresult > 0)
-        iocontinue (READ_EVENT, KTEARDOWN);
+        iocontinue (READ_EVENT, &connection_type::kont_teardown);
     else
         iostop ();
 }

@@ -172,7 +172,7 @@ public:
         : id (a), prev (b), next (c),
           handle_id (-1), state (FREE), remote_addr (),
           response (), request (),
-          kont_ready (false), kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
+          kont_ready (false), kont (), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
           decoder_request_line (), decoder_request_header (),
           decoder_chunk () {}
@@ -185,27 +185,7 @@ public:
     void clear ();
 
 private:
-    enum {
-        KREQUEST_LINE,
-        KREQUEST_HEADER,
-        KREQUEST_CHUNKED,
-        KREQUEST_LENGTH,
-        KREQUEST_LINE_READ,
-        KREQUEST_HEADER_READ,
-        KREQUEST_CHUNKED_READ,
-        KREQUEST_LENGTH_READ,
-        KDISPATCH,
-        KRESPONSE,
-        KRESPONSE_HEADER,
-        KRESPONSE_CHUNK_HEADER,
-        KRESPONSE_CHUNK_BODY,
-        KRESPONSE_CHUNK_CRLF,
-        KRESPONSE_FILE_LENGTH,
-        KRESPONSE_BODY_LENGTH,
-        KRESPONSE_END,
-        KTEARDOWN,
-    };
-    typedef int kont_type;
+    typedef void (connection_type::*kont_type) (tcpserver_type& loop);
     bool kont_ready;
     kont_type kont;
     std::string rdbuf;
