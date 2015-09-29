@@ -160,26 +160,6 @@ class tcpserver_type;
 
 class connection_type {
 public:
-    enum {
-        KREQUEST_LINE_READ,
-        KREQUEST_HEADER_READ,
-        KREQUEST_CHUNKED_READ,
-        KREQUEST_LENGTH_READ,
-        KREQUEST_LINE,
-        KREQUEST_HEADER,
-        KREQUEST_CHUNKED,
-        KREQUEST_LENGTH,
-        KDISPATCH,
-        KRESPONSE,
-        KRESPONSE_HEADER,
-        KRESPONSE_CHUNK_HEADER,
-        KRESPONSE_CHUNK_BODY,
-        KRESPONSE_CHUNK_CRLF,
-        KRESPONSE_FILE_LENGTH,
-        KRESPONSE_BODY_LENGTH,
-        KRESPONSE_END,
-        KTEARDOWN,
-    };
     std::size_t const id;
     std::size_t prev, next;
     ssize_t handle_id;
@@ -192,7 +172,7 @@ public:
         : id (a), prev (b), next (c),
           handle_id (-1), state (FREE), remote_addr (),
           response (), request (),
-          kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
+          kont_ready (false), kont (1), rdbuf (BUFFER_SIZE, '\0'), wrbuf (),
           rdpos (0), rdsize (0), wrpos (0), wrpos1 (0), wrsize (0),
           decoder_request_line (), decoder_request_header (),
           decoder_chunk () {}
@@ -205,6 +185,27 @@ public:
     void clear ();
 
 private:
+    enum {
+        KREQUEST_LINE,
+        KREQUEST_HEADER,
+        KREQUEST_CHUNKED,
+        KREQUEST_LENGTH,
+        KREQUEST_LINE_READ,
+        KREQUEST_HEADER_READ,
+        KREQUEST_CHUNKED_READ,
+        KREQUEST_LENGTH_READ,
+        KDISPATCH,
+        KRESPONSE,
+        KRESPONSE_HEADER,
+        KRESPONSE_CHUNK_HEADER,
+        KRESPONSE_CHUNK_BODY,
+        KRESPONSE_CHUNK_CRLF,
+        KRESPONSE_FILE_LENGTH,
+        KRESPONSE_BODY_LENGTH,
+        KRESPONSE_END,
+        KTEARDOWN,
+    };
+    bool kont_ready;
     int kont;
     std::string rdbuf;
     std::string wrbuf;
@@ -220,7 +221,26 @@ private:
     ssize_t ioresult;
     int keepalive_requests;
 
-    ssize_t iocontinue (uint32_t const mask, int const kontinuation);
+    void kont_request_line (tcpserver_type& loop);
+    void kont_request_header (tcpserver_type& loop);
+    void kont_request_chunked (tcpserver_type& loop);
+    void kont_request_length (tcpserver_type& loop);
+    void kont_request_read (tcpserver_type& loop);
+    void kont_dispatch (tcpserver_type& loop);
+    void kont_response (tcpserver_type& loop);
+    void kont_response_header (tcpserver_type& loop);
+    void kont_response_chunk_header (tcpserver_type& loop);
+    void kont_response_chunk_body (tcpserver_type& loop);
+    void kont_response_chunk_crlf (tcpserver_type& loop);
+    void kont_response_file_length (tcpserver_type& loop);
+    void kont_response_body_length (tcpserver_type& loop);
+    void kont_response_end (tcpserver_type& loop);
+    void kont_teardown (tcpserver_type& loop);
+
+    void ioready ();
+    void iocontinue (uint32_t const mask, int const kontinuation);
+    void iocontinue (int const kontinuation);
+    void iostop ();
     void prepare_request_body ();
     void prepare_request_chunked ();
     void finalize_request_chunked ();
