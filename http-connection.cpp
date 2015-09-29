@@ -191,54 +191,24 @@ connection_type::iotransfer (tcpserver_type& loop)
     ioready ();
     while (kont_ready) {
         switch (kont) {
-        case KREQUEST_LINE:
-            kont_request_line (loop);
-            break;
-        case KREQUEST_HEADER:
-            kont_request_header (loop);
-            break;
-        case KREQUEST_CHUNKED:
-            kont_request_chunked (loop);
-            break;
-        case KREQUEST_LENGTH:
-            kont_request_length (loop);
-            break;
-        case KREQUEST_LINE_READ:
-        case KREQUEST_HEADER_READ:
-        case KREQUEST_CHUNKED_READ:
-        case KREQUEST_LENGTH_READ:
-            kont_request_read (loop);
-            break;
-        case KDISPATCH:
-            kont_dispatch (loop);
-            break;
-        case KRESPONSE:
-            kont_response (loop);
-            break;
-        case KRESPONSE_HEADER:
-            kont_response_header (loop);
-            break;
-        case KRESPONSE_CHUNK_HEADER:
-            kont_response_chunk_header (loop);
-            break;
-        case KRESPONSE_CHUNK_BODY:
-            kont_response_chunk_body (loop);
-            break;
-        case KRESPONSE_CHUNK_CRLF:
-            kont_response_chunk_crlf (loop);
-            break;
-        case KRESPONSE_FILE_LENGTH:
-            kont_response_file_length (loop);
-            break;
-        case KRESPONSE_BODY_LENGTH:
-            kont_response_body_length (loop);
-            break;
-        case KRESPONSE_END:
-            kont_response_end (loop);
-            break;
-        case KTEARDOWN:
-            kont_teardown (loop);
-            break;
+        case KREQUEST_LINE:          kont_request_line (loop);          break;
+        case KREQUEST_HEADER:        kont_request_header (loop);        break;
+        case KREQUEST_CHUNKED:       kont_request_chunked (loop);       break;
+        case KREQUEST_LENGTH:        kont_request_length (loop);        break;
+        case KREQUEST_LINE_READ:     kont_request_read (loop);          break;
+        case KREQUEST_HEADER_READ:   kont_request_read (loop);          break;
+        case KREQUEST_CHUNKED_READ:  kont_request_read (loop);          break;
+        case KREQUEST_LENGTH_READ:   kont_request_read (loop);          break;
+        case KDISPATCH:              kont_dispatch (loop);              break;
+        case KRESPONSE:              kont_response (loop);              break;
+        case KRESPONSE_HEADER:       kont_response_header (loop);       break;
+        case KRESPONSE_CHUNK_HEADER: kont_response_chunk_header (loop); break;
+        case KRESPONSE_CHUNK_BODY:   kont_response_chunk_body (loop);   break;
+        case KRESPONSE_CHUNK_CRLF:   kont_response_chunk_crlf (loop);   break;
+        case KRESPONSE_FILE_LENGTH:  kont_response_file_length (loop);  break;
+        case KRESPONSE_BODY_LENGTH:  kont_response_body_length (loop);  break;
+        case KRESPONSE_END:          kont_response_end (loop);          break;
+        case KTEARDOWN:              kont_teardown (loop);              break;
         }
     }
     return ioresult;
@@ -276,15 +246,17 @@ connection_type::prepare_request_body ()
                 && request.header.count ("host") == 0)) {
         handler_type h;
         h.bad_request (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    response.http_version = request.http_version;
-    if (request.header.count ("transfer-encoding") > 0)
-        prepare_request_chunked ();
-    else if (request.header.count ("content-length") > 0)
-        prepare_request_length ();
-    else
-        iocontinue (KDISPATCH);
+    else {
+        response.http_version = request.http_version;
+        if (request.header.count ("transfer-encoding") > 0)
+            prepare_request_chunked ();
+        else if (request.header.count ("content-length") > 0)
+            prepare_request_length ();
+        else
+            iocontinue (KDISPATCH);
+    }
 }
 
 void
@@ -294,13 +266,15 @@ connection_type::prepare_request_chunked ()
     std::vector<simple_token_type> te;
     if (! decode (te, request.header["transfer-encoding"], 1)) {
         h.bad_request (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    if (te.size () != 1 || ! te.back ().equal_token ("chunked")) {
+    else if (te.size () != 1 || ! te.back ().equal_token ("chunked")) {
         h.unsupported_media_type (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    iocontinue (KREQUEST_CHUNKED);
+    else {
+        iocontinue (KREQUEST_CHUNKED);
+    }
 }
 
 void
@@ -318,38 +292,44 @@ connection_type::kont_request_chunked (tcpserver_type& loop)
 void
 connection_type::finalize_request_chunked ()
 {
-    handler_type h;
     if (decoder_chunk.bad ()) {
+        handler_type h;
         h.bad_request (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    ssize_t const n = decoder_chunk.content_length;
-    request.content_length = n;
-    request.header["content-length"] = std::to_string (n);
-    iocontinue (KDISPATCH);
+    else {
+        ssize_t const n = decoder_chunk.content_length;
+        request.content_length = n;
+        request.header["content-length"] = std::to_string (n);
+        iocontinue (KDISPATCH);
+    }
 }
 
 void
 connection_type::prepare_request_length ()
 {
-    handler_type h;
     content_length_type canonlength;
     decode (canonlength, request.header["content-length"]);
     if (400 == canonlength.status) {
+        handler_type h;
         h.bad_request (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    if (413 == canonlength.status) {
+    else if (413 == canonlength.status) {
+        handler_type h;
         h.request_entity_too_large (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    if (request.method != "POST" && request.method != "PUT") {
+    else if (request.method != "POST" && request.method != "PUT") {
+        handler_type h;
         h.request_entity_too_large (*this);
-        return iocontinue (KRESPONSE);
+        iocontinue (KRESPONSE);
     }
-    request.header["content-length"] = std::to_string (canonlength.length);
-    request.content_length = canonlength.length;
-    iocontinue (KREQUEST_LENGTH);
+    else {
+        request.header["content-length"] = std::to_string (canonlength.length);
+        request.content_length = canonlength.length;
+        iocontinue (KREQUEST_LENGTH);
+    }
 }
 
 void
@@ -382,12 +362,13 @@ connection_type::kont_dispatch (tcpserver_type& loop)
     if (request.uri == "/test") {
         handler_test_type h;
         h.process (*this);
+        iocontinue (KRESPONSE);
     }
     else {
         handler_file_type h;
         h.process (*this);
+        iocontinue (KRESPONSE);
     }
-    iocontinue (KRESPONSE);
 }
 
 void
@@ -459,17 +440,15 @@ connection_type::kont_response_header (tcpserver_type& loop)
     wrpos += ioresult;
     if (wrpos < wrsize)
         iocontinue (WRITE_EVENT, KRESPONSE_HEADER);
-    else if (prepare_response_body ())
-        iocontinue (WRITE_EVENT, kont);
-    else
+    else if (! response.has_body)
         iocontinue (KRESPONSE_END);
+    else
+        prepare_response_body ();
 }
 
-bool
+void
 connection_type::prepare_response_body ()
 {
-    if (! response.has_body)
-        return false;
     wrpos = 0;
     if (response.chunked) {
         if (response.body_fd < 0)
@@ -478,16 +457,15 @@ connection_type::prepare_response_body ()
             response.content_length - wrpos, BUFFER_SIZE - 16);
         wrbuf = to_xdigits (response.chunk_size) + "\r\n";
         wrpos1 = 0;
-        iocontinue (KRESPONSE_CHUNK_HEADER);
+        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
     }
     else if (response.body_fd >= 0) {
-        iocontinue (KRESPONSE_FILE_LENGTH);
+        iocontinue (WRITE_EVENT, KRESPONSE_FILE_LENGTH);
     }
     else {
         wrsize = response.body.size ();
-        iocontinue (KRESPONSE_BODY_LENGTH);
+        iocontinue (WRITE_EVENT, KRESPONSE_BODY_LENGTH);
     }
-    return true;
 }
 
 void
@@ -541,15 +519,19 @@ connection_type::kont_response_chunk_crlf (tcpserver_type& loop)
         return iostop ();
     wrpos1 += ioresult;
     if (wrpos1 < wrbuf.size ())
-        return iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
-    setsockopt_cork (sock, false);
-    if (response.chunk_size == 0)
-        return iocontinue (KRESPONSE_END);
-    response.chunk_size = std::min (
-        response.content_length - wrpos, BUFFER_SIZE - 16);
-    wrbuf = to_xdigits (response.chunk_size) + "\r\n";
-    wrpos1 = 0;
-    iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
+        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_CRLF);
+    else if (response.chunk_size == 0) {
+        setsockopt_cork (sock, false);
+        iocontinue (KRESPONSE_END);
+    }
+    else {
+        setsockopt_cork (sock, false);
+        response.chunk_size = std::min (
+            response.content_length - wrpos, BUFFER_SIZE - 16);
+        wrbuf = to_xdigits (response.chunk_size) + "\r\n";
+        wrpos1 = 0;
+        iocontinue (WRITE_EVENT, KRESPONSE_CHUNK_HEADER);
+    }
 }
 
 void

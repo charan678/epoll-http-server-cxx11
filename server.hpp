@@ -247,7 +247,7 @@ private:
     void prepare_request_length ();
     void prepare_response ();
     void decide_transfer_encoding ();
-    bool prepare_response_body ();
+    void prepare_response_body ();
     bool finalize_response ();
     bool done_connection ();
 };
